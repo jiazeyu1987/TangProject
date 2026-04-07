@@ -1,0 +1,54 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "department",
+    "contacts",
+    "feedback_summary",
+    "blockers",
+    "opportunities",
+    "issues",
+    "next_actions",
+    "stage_after_update",
+    "manager_attention_needed",
+    "next_step"
+  ],
+  "properties": {
+    "department": { "type": "string" },
+    "contacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "role"],
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "type": "string" }
+        }
+      }
+    },
+    "feedback_summary": { "type": "string" },
+    "blockers": { "type": "string" },
+    "opportunities": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "assignee_name", "due_date"],
+        "properties": {
+          "title": { "type": "string" },
+          "assignee_name": { "type": "string" },
+          "due_date": { "type": "string" }
+        }
+      }
+    },
+    "stage_after_update": { "type": "string" },
+    "manager_attention_needed": { "type": "boolean" },
+    "next_step": { "type": "string" }
+  }
+}

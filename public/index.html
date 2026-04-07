@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI 医院导入管理系统</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="tab-panels">
+        <section class="tab-panel" data-panel="entry">
+          <article class="panel-card">
+            <div class="section-head">
+              <div>
+                <p class="section-eyebrow">Entry</p>
+                <h2>纪要录入</h2>
+              </div>
+              <p class="section-copy">录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议。</p>
+            </div>
+
+            <form id="intakeForm" class="intake-form">
+              <div class="field-row">
+                <label>
+                  <span>医院项目</span>
+                  <select id="projectSelect" required></select>
+                </label>
+                <label>
+                  <span>拜访日期</span>
+                  <input id="visitDateInput" type="date" required />
+                </label>
+              </div>
+
+              <div id="promptChips" class="prompt-chips">
+                <button class="chip" data-template="trial" type="button">试用反馈</button>
+                <button class="chip" data-template="training" type="button">培训推进</button>
+                <button class="chip" data-template="blocker" type="button">阻塞升级</button>
+              </div>
+
+              <label>
+                <span>原始推进记录</span>
+                <textarea
+                  id="noteInput"
+                  rows="7"
+                  placeholder="请描述本次医院推进情况，例如：拜访科室、关键接触人、反馈意见、阻塞点、下一步计划及是否需要管理支持。"
+                  required
+                ></textarea>
+              </label>
+
+              <div class="form-foot">
+                <p class="hint">建议记录完整业务信息，以便系统准确生成项目更新与任务动作。</p>
+                <button id="submitButton" class="primary-button" type="submit">提交纪要</button>
+              </div>
+            </form>
+
+            <div id="intakeResult" class="result-card"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" data-panel="signal" hidden>
+          <article class="panel-card">
+            <div class="section-head">
+              <div>
+                <p class="section-eyebrow">Signal</p>
+                <h2>管理信号</h2>
+              </div>
+              <p class="section-copy">展示当前需要优先关注的项目、停滞医院、逾期任务与最新推进动态。</p>
+            </div>
+            <div id="signalPanel" class="signal-stack"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" data-panel="ledger" hidden>
+          <div class="panel-grid panel-grid-ledger">
+            <article class="panel-card">
+              <div class="section-head">
+                <div>
+                  <p class="section-eyebrow">Ledger</p>
+                  <h2>医院项目台账</h2>
+                </div>
+                <p class="section-copy">按医院项目集中查看当前阶段、任务状态、问题标签与最新推进摘要。</p>
+              </div>
+              <div id="projectList" class="project-list"></div>
+            </article>
+
+            <article class="panel-card">
+              <div class="section-head">
+                <div>
+                  <p class="section-eyebrow">Project Detail</p>
+                  <h2>项目详情视图</h2>
+                </div>
+                <p class="section-copy">查看单个医院项目的关键联系人、历史更新与当前推进计划。</p>
+              </div>
+              <div id="projectDetail" class="project-detail"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="tasks" hidden>
+          <article class="panel-card">
+            <div class="section-head">
+              <div>
+                <p class="section-eyebrow">Tasks</p>
+                <h2>任务中心</h2>
+              </div>
+              <p class="section-copy">集中处理导入项目相关待办，支持直接更新任务状态，验证任务闭环。</p>
+            </div>
+            <div id="taskBoard" class="task-board"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" data-panel="insights" hidden>
+          <article class="panel-card">
+            <div class="section-head">
+              <div>
+                <p class="section-eyebrow">Insights</p>
+                <h2>管理汇总</h2>
+              </div>
+              <p class="section-copy">按阶段分布、高频问题和最新动态汇总项目情况，支撑管理判断与资源配置。</p>
+            </div>
+            <div id="insightPanel" class="insight-panel"></div>
+          </article>
+        </section>
+      </main>
+
+      <nav id="tabBar" class="tab-bar" aria-label="主导航">
+        <button class="tab-button is-active" data-tab="entry" type="button">录入</button>
+        <button class="tab-button" data-tab="signal" type="button">信号</button>
+        <button class="tab-button" data-tab="ledger" type="button">台账</button>
+        <button class="tab-button" data-tab="tasks" type="button">任务</button>
+        <button class="tab-button" data-tab="insights" type="button">汇总</button>
+      </nav>
+
+      <div id="toast" class="toast" hidden></div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,209 @@
+{
+  "meta": {
+    "version": "0.1.0",
+    "createdAt": "2026-04-05T09:00:00.000Z",
+    "updatedAt": "2026-04-05T09:00:00.000Z"
+  },
+  "currentUserId": "user-li-wei",
+  "regions": [
+    { "id": "region-east", "name": "华东", "code": "EAST" },
+    { "id": "region-central", "name": "华中", "code": "CENTRAL" }
+  ],
+  "users": [
+    { "id": "user-li-wei", "name": "李伟", "role": "field_staff", "regionId": "region-east" },
+    { "id": "user-sun-min", "name": "孙敏", "role": "field_staff", "regionId": "region-east" },
+    { "id": "user-wang-chao", "name": "王超", "role": "regional_manager", "regionId": "region-east" },
+    { "id": "user-he-nan", "name": "何楠", "role": "field_staff", "regionId": "region-central" }
+  ],
+  "hospitals": [
+    { "id": "hospital-sh-1", "regionId": "region-east", "name": "上海市第一人民医院", "hospitalLevel": "三甲", "city": "上海" },
+    { "id": "hospital-sz-1", "regionId": "region-east", "name": "苏州工业园区中心医院", "hospitalLevel": "三甲", "city": "苏州" },
+    { "id": "hospital-hz-2", "regionId": "region-east", "name": "杭州市第二人民医院", "hospitalLevel": "三甲", "city": "杭州" }
+  ],
+  "departments": [
+    { "id": "department-sh-pain", "hospitalId": "hospital-sh-1", "name": "疼痛科" },
+    { "id": "department-sh-anes", "hospitalId": "hospital-sh-1", "name": "麻醉科" },
+    { "id": "department-sz-rehab", "hospitalId": "hospital-sz-1", "name": "康复科" },
+    { "id": "department-hz-anes", "hospitalId": "hospital-hz-2", "name": "麻醉科" }
+  ],
+  "contacts": [
+    { "id": "contact-sh-chen", "hospitalId": "hospital-sh-1", "departmentId": "department-sh-pain", "name": "陈主任", "roleTitle": "科主任", "lastContactAt": "2026-04-02T09:00:00.000Z" },
+    { "id": "contact-sz-lin", "hospitalId": "hospital-sz-1", "departmentId": "department-sz-rehab", "name": "林护士长", "roleTitle": "护士长", "lastContactAt": "2026-03-30T09:00:00.000Z" },
+    { "id": "contact-hz-zhao", "hospitalId": "hospital-hz-2", "departmentId": "department-hz-anes", "name": "赵主任", "roleTitle": "科主任", "lastContactAt": "2026-03-18T09:00:00.000Z" }
+  ],
+  "stages": [
+    { "id": "stage-target", "code": "target", "name": "目标建档", "sortOrder": 1 },
+    { "id": "stage-contact", "code": "contact", "name": "科室接触", "sortOrder": 2 },
+    { "id": "stage-trial", "code": "trial", "name": "试用评估", "sortOrder": 3 },
+    { "id": "stage-training", "code": "training", "name": "培训排期", "sortOrder": 4 },
+    { "id": "stage-routine", "code": "routine", "name": "常规使用", "sortOrder": 5 }
+  ],
+  "issueTags": [
+    { "id": "issue-pricing", "code": "pricing", "name": "收费" },
+    { "id": "issue-training", "code": "training", "name": "培训" },
+    { "id": "issue-procurement", "code": "procurement", "name": "采购流程" },
+    { "id": "issue-evidence", "code": "evidence", "name": "临床价值" },
+    { "id": "issue-coordination", "code": "coordination", "name": "院内协同" },
+    { "id": "issue-workflow", "code": "workflow", "name": "使用流程" },
+    { "id": "issue-support", "code": "support", "name": "科室支持" }
+  ],
+  "projects": [
+    {
+      "id": "project-sh-1",
+      "hospitalId": "hospital-sh-1",
+      "regionId": "region-east",
+      "ownerUserId": "user-li-wei",
+      "currentStageId": "stage-trial",
+      "riskLevel": "high",
+      "managerAttentionNeeded": true,
+      "lastFollowUpAt": "2026-04-02T09:00:00.000Z",
+      "nextAction": "补充收费测算材料并锁定下一轮试用时间",
+      "nextActionDueAt": "2026-04-07T09:00:00.000Z",
+      "latestSummary": "疼痛科认可临床效果，但对收费路径和培训安排仍有顾虑。",
+      "currentIssueTagIds": ["issue-pricing", "issue-training"],
+      "latestUpdateId": "update-sh-1"
+    },
+    {
+      "id": "project-sz-1",
+      "hospitalId": "hospital-sz-1",
+      "regionId": "region-east",
+      "ownerUserId": "user-sun-min",
+      "currentStageId": "stage-training",
+      "riskLevel": "normal",
+      "managerAttentionNeeded": false,
+      "lastFollowUpAt": "2026-03-30T09:00:00.000Z",
+      "nextAction": "确认培训名单并发出材料",
+      "nextActionDueAt": "2026-04-10T09:00:00.000Z",
+      "latestSummary": "康复科已接受试用结果，等护理侧完成培训排期。",
+      "currentIssueTagIds": ["issue-training", "issue-workflow"],
+      "latestUpdateId": "update-sz-1"
+    },
+    {
+      "id": "project-hz-2",
+      "hospitalId": "hospital-hz-2",
+      "regionId": "region-east",
+      "ownerUserId": "user-li-wei",
+      "currentStageId": "stage-contact",
+      "riskLevel": "high",
+      "managerAttentionNeeded": true,
+      "lastFollowUpAt": "2026-03-18T09:00:00.000Z",
+      "nextAction": "协调院内采购与麻醉科负责人开一次联合沟通",
+      "nextActionDueAt": "2026-04-05T09:00:00.000Z",
+      "latestSummary": "麻醉科仍在等待采购流程确认，对经济性材料提出更高要求。",
+      "currentIssueTagIds": ["issue-procurement", "issue-evidence", "issue-support"],
+      "latestUpdateId": "update-hz-1"
+    }
+  ],
+  "updates": [
+    {
+      "id": "update-sh-1",
+      "projectId": "project-sh-1",
+      "createdByUserId": "user-li-wei",
+      "visitDate": "2026-04-02",
+      "departmentId": "department-sh-pain",
+      "contactEntries": [{ "contactId": "contact-sh-chen", "name": "陈主任", "role": "科主任" }],
+      "feedbackSummary": "主任认可镇痛效果，希望先补一版收费测算，再决定扩大试用。",
+      "blockers": "收费路径不清晰，培训资源也需要提前锁定。",
+      "opportunities": "如果经济性说明顺利通过，下周可以追加 3 例试用。",
+      "nextStep": "补充收费测算材料并与护士长确认培训时间",
+      "stageBeforeId": "stage-contact",
+      "stageAfterId": "stage-trial",
+      "managerAttentionNeeded": true,
+      "issueTagIds": ["issue-pricing", "issue-training"],
+      "sourceNote": "今天去上海一院疼痛科见了陈主任，主任认可效果，但说收费路径还不清楚，护士这边培训最好提前排。",
+      "createdAt": "2026-04-02T09:00:00.000Z"
+    },
+    {
+      "id": "update-sz-1",
+      "projectId": "project-sz-1",
+      "createdByUserId": "user-sun-min",
+      "visitDate": "2026-03-30",
+      "departmentId": "department-sz-rehab",
+      "contactEntries": [{ "contactId": "contact-sz-lin", "name": "林护士长", "role": "护士长" }],
+      "feedbackSummary": "康复科试用反馈稳定，护理侧要求统一培训材料和操作 SOP。",
+      "blockers": "培训排期未锁定，使用流程还需标准化。",
+      "opportunities": "如果本周把培训做完，月底有机会进入常规使用。",
+      "nextStep": "确认培训名单并发出培训资料",
+      "stageBeforeId": "stage-trial",
+      "stageAfterId": "stage-training",
+      "managerAttentionNeeded": false,
+      "issueTagIds": ["issue-training", "issue-workflow"],
+      "sourceNote": "苏州中心医院康复科试用反馈不错，林护士长说要统一培训材料和流程。",
+      "createdAt": "2026-03-30T09:00:00.000Z"
+    },
+    {
+      "id": "update-hz-1",
+      "projectId": "project-hz-2",
+      "createdByUserId": "user-li-wei",
+      "visitDate": "2026-03-18",
+      "departmentId": "department-hz-anes",
+      "contactEntries": [{ "contactId": "contact-hz-zhao", "name": "赵主任", "role": "科主任" }],
+      "feedbackSummary": "赵主任有兴趣，但明确要求先走完院内采购和成本论证。",
+      "blockers": "采购流程不清楚，科室支持力度不足，经济性材料不完整。",
+      "opportunities": "如果管理层出面协调设备科，本项目还有机会重新推进。",
+      "nextStep": "梳理采购流程并准备经济性说明，争取下一次联合沟通",
+      "stageBeforeId": "stage-target",
+      "stageAfterId": "stage-contact",
+      "managerAttentionNeeded": true,
+      "issueTagIds": ["issue-procurement", "issue-evidence", "issue-support"],
+      "sourceNote": "杭州二院麻醉科赵主任愿意了解，但说采购和预算都卡着，需要更强支持。",
+      "createdAt": "2026-03-18T09:00:00.000Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-sh-1",
+      "projectId": "project-sh-1",
+      "updateId": "update-sh-1",
+      "title": "补充上海一院收费测算材料",
+      "description": "对接总部市场团队，整理收费路径和经济性说明。",
+      "assigneeUserId": "user-li-wei",
+      "dueAt": "2026-04-07T09:00:00.000Z",
+      "status": "todo",
+      "priority": "high",
+      "completedAt": null,
+      "createdAt": "2026-04-02T09:10:00.000Z"
+    },
+    {
+      "id": "task-sz-1",
+      "projectId": "project-sz-1",
+      "updateId": "update-sz-1",
+      "title": "确认苏州中心医院培训名单",
+      "description": "把护士端培训名单和培训物料一次对齐。",
+      "assigneeUserId": "user-sun-min",
+      "dueAt": "2026-04-10T09:00:00.000Z",
+      "status": "in_progress",
+      "priority": "medium",
+      "completedAt": null,
+      "createdAt": "2026-03-30T09:10:00.000Z"
+    },
+    {
+      "id": "task-hz-1",
+      "projectId": "project-hz-2",
+      "updateId": "update-hz-1",
+      "title": "拉通杭州二院采购与麻醉科联合沟通",
+      "description": "需要区域经理参与，确认采购节点与证据材料要求。",
+      "assigneeUserId": "user-wang-chao",
+      "dueAt": "2026-03-24T09:00:00.000Z",
+      "status": "todo",
+      "priority": "high",
+      "completedAt": null,
+      "createdAt": "2026-03-18T09:10:00.000Z"
+    },
+    {
+      "id": "task-sh-2",
+      "projectId": "project-sh-1",
+      "updateId": "update-sh-1",
+      "title": "跟护士端确认试用培训时间",
+      "description": "锁定下一轮试用前的培训时段。",
+      "assigneeUserId": "user-li-wei",
+      "dueAt": "2026-04-05T09:00:00.000Z",
+      "status": "completed",
+      "priority": "medium",
+      "completedAt": "2026-04-05T09:00:00.000Z",
+      "createdAt": "2026-04-02T09:12:00.000Z"
+    }
+  ],
+  "sessions": [],
+  "messages": []
+}
