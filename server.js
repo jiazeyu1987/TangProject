@@ -1,10 +1,8 @@
 import crypto from "node:crypto";
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
   readFileSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -21,11 +19,15 @@ const DATA_DIR = path.join(__dirname, "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 const SEED_STORE_PATH = path.join(DATA_DIR, "seed-store.json");
 const INTAKE_SCHEMA_PATH = path.join(DATA_DIR, "intake-schema.json");
+const INTAKE_RESPONSE_SCHEMA = readJsonFile(INTAKE_SCHEMA_PATH);
 
 const port = Number(process.env.PORT || 3000);
-const configuredCodexPath = process.env.CODEX_CLI_PATH || "codex";
-const model = process.env.CODEX_MODEL?.trim() || null;
-const sandbox = normalizeSandbox(process.env.CODEX_SANDBOX || "read-only");
+const responsesBaseUrl = normalizeResponsesBaseUrl(
+  process.env.RESPONSES_BASE_URL?.trim() || "https://api.asxs.top/v1",
+);
+const responsesModel = process.env.RESPONSES_MODEL?.trim() || "gpt-5.4";
+const responsesApiKey = process.env.OPENAI_API_KEY?.trim() || "";
+const responsesTimeoutMs = toPositiveInteger(process.env.RESPONSES_TIMEOUT_MS, 120000);
 
 let store = loadOrCreateStore();
 
@@ -127,34 +129,14 @@ function buildBootstrapPayload() {
 }
 
 function buildHealthPayload() {
-  const launch = getCodexLaunchSpec();
-  if (!launch.available) {
-    return {
-      ok: false,
-      configured: false,
-      codexPath: configuredCodexPath,
-      authStatus: launch.message,
-      extractionMode: "heuristic-fallback",
-      model,
-      sandbox,
-      dataStore: {
-        path: STORE_PATH,
-        projectCount: store.projects.length,
-        taskCount: store.tasks.length,
-      },
-    };
-  }
-
-  const health = getCodexHealth();
+  const health = getResponsesApiHealth();
   return {
-    ok: health.available,
-    configured: health.available && health.loggedIn,
-    codexPath: launch.display,
+    ok: health.configured,
+    configured: health.configured,
     authStatus: health.message,
-    extractionMode:
-      health.available && health.loggedIn ? "local-codex-exec" : "heuristic-fallback",
-    model,
-    sandbox,
+    extractionMode: health.configured ? "responses-api" : "unconfigured",
+    model: responsesModel,
+    baseUrl: responsesBaseUrl,
     dataStore: {
       path: STORE_PATH,
       projectCount: store.projects.length,
@@ -334,7 +316,10 @@ async function processIntake({ project, note, visitDate }) {
   const currentUser = getCurrentUser();
   const departmentId = ensureDepartment(project.hospitalId, extracted.extraction.department);
   const stageBeforeId = project.currentStageId;
-  const stageAfterId = resolveStageId(extracted.extraction.stageAfterUpdate) || stageBeforeId;
+  const stageAfterId = resolveStageId(extracted.extraction.stageAfterUpdate);
+  if (!stageAfterId) {
+    throw new Error(`Unknown stage returned by Responses API: ${extracted.extraction.stageAfterUpdate}.`);
+  }
   const issueTagIds = resolveIssueTagIds(extracted.extraction.issues);
   const contacts = extracted.extraction.contacts.map((contact) =>
     upsertHospitalContact({
@@ -407,7 +392,7 @@ async function processIntake({ project, note, visitDate }) {
       title: action.title,
       description: `来源于 ${getHospitalById(project.hospitalId)?.name || "医院项目"} 的 AI 录入纪要。`,
       assigneeUserId: assignee.id,
-      dueAt: action.dueDate ? `${action.dueDate}T09:00:00.000Z` : fallbackTaskDueDate(visitDate),
+      dueAt: action.dueDate ? `${action.dueDate}T09:00:00.000Z` : null,
       status: "todo",
       priority: extracted.extraction.managerAttentionNeeded ? "high" : "medium",
       completedAt: null,
@@ -419,12 +404,12 @@ async function processIntake({ project, note, visitDate }) {
 
   project.currentStageId = stageAfterId;
   project.lastFollowUpAt = `${visitDate}T09:00:00.000Z`;
-  project.nextAction = extracted.extraction.nextStep || createdTasks[0]?.title || project.nextAction || "";
-  project.nextActionDueAt = createdTasks[0]?.dueAt || project.nextActionDueAt || null;
+  project.nextAction = extracted.extraction.nextStep || createdTasks[0]?.title || "";
+  project.nextActionDueAt = createdTasks[0]?.dueAt || null;
   project.latestSummary = extracted.extraction.feedbackSummary;
   project.managerAttentionNeeded = extracted.extraction.managerAttentionNeeded;
   project.latestUpdateId = update.id;
-  project.currentIssueTagIds = issueTagIds.length ? issueTagIds : project.currentIssueTagIds;
+  project.currentIssueTagIds = issueTagIds;
   project.riskLevel = deriveRiskLevel({
     managerAttentionNeeded: project.managerAttentionNeeded,
     issueCount: project.currentIssueTagIds.length,
@@ -448,33 +433,18 @@ async function processIntake({ project, note, visitDate }) {
 }
 
 async function extractStructuredUpdate({ project, note, visitDate }) {
-  const fallback = fallbackExtractIntake({ project, note, visitDate });
-  const launch = getCodexLaunchSpec();
-  const health = launch.available ? getCodexHealth() : null;
-
-  if (!launch.available || !health?.available || !health.loggedIn) {
-    return {
-      source: "heuristic",
-      warnings: [health?.message || launch.message || "Codex CLI unavailable."],
-      extraction: fallback,
-    };
+  const health = getResponsesApiHealth();
+  if (!health.configured) {
+    throw new Error(health.message);
   }
 
-  try {
-    const prompt = buildExtractionPrompt({ project, note, visitDate });
-    const parsed = runCodexStructuredExtraction(prompt, launch);
-    return {
-      source: "codex",
-      warnings: [],
-      extraction: normalizeExtraction(parsed, { project, note, visitDate }),
-    };
-  } catch (error) {
-    return {
-      source: "heuristic",
-      warnings: [error instanceof Error ? error.message : "Codex extraction failed."],
-      extraction: fallback,
-    };
-  }
+  const prompt = buildExtractionPrompt({ project, note, visitDate });
+  const parsed = await runResponsesStructuredExtraction(prompt);
+  return {
+    source: "responses-api",
+    warnings: [],
+    extraction: normalizeExtraction(parsed),
+  };
 }
 
 function buildExtractionPrompt({ project, note, visitDate }) {
@@ -489,6 +459,8 @@ function buildExtractionPrompt({ project, note, visitDate }) {
   return [
     "你是医疗器械医院导入项目的结构化纪要助手。",
     "请根据一线自由文本提取结构化字段，并且只输出 JSON。",
+    "stage_after_update 必须严格使用可选阶段中的原值，issues 必须严格使用可选问题标签中的原值。",
+    "next_actions 和 next_step 不允许留空，至少生成 1 条可执行动作；next_actions[*].due_date 如能判断请使用 YYYY-MM-DD，否则返回空字符串。",
     `医院：${hospital.name}`,
     `当前阶段：${stage.name}`,
     `记录日期：${visitDate}`,
@@ -500,70 +472,106 @@ function buildExtractionPrompt({ project, note, visitDate }) {
   ].join("\n");
 }
 
-function runCodexStructuredExtraction(prompt, launch) {
-  const outputPath = path.join(DATA_DIR, `codex-output-${crypto.randomUUID()}.json`);
-  const args = [
-    ...launch.prefixArgs,
-    "exec",
-    "--skip-git-repo-check",
-    "--ephemeral",
-    "--sandbox",
-    "read-only",
-    "--output-schema",
-    INTAKE_SCHEMA_PATH,
-    "--output-last-message",
-    outputPath,
-    "--color",
-    "never",
-    "-C",
-    __dirname,
-  ];
-
-  if (model) {
-    args.push("-m", model);
-  }
-
-  args.push("-");
-
-  const result = spawnSync(launch.command, args, {
-    cwd: __dirname,
-    env: process.env,
-    encoding: "utf8",
-    input: prompt,
-    timeout: 120000,
-    maxBuffer: 10 * 1024 * 1024,
-    windowsHide: true,
-  });
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  const stderr = asString(result.stderr);
-  const stdout = asString(result.stdout);
+async function runResponsesStructuredExtraction(prompt) {
+  const endpoint = `${responsesBaseUrl}/responses`;
+  let response;
 
   try {
-    const raw = existsSync(outputPath) ? readFileSync(outputPath, "utf8") : stdout;
-    const parsed = JSON.parse(raw);
-    if (result.status !== 0) {
-      throw new Error(stderr || stdout || `Codex exec exited with code ${result.status}.`);
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${responsesApiKey}`,
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        model: responsesModel,
+        store: false,
+        stream: true,
+        instructions: "Return only JSON that matches the provided schema.",
+        input: [
+          {
+            role: "user",
+            content: [{ type: "input_text", text: prompt }],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "intake_extraction",
+            strict: true,
+            schema: INTAKE_RESPONSE_SCHEMA,
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(responsesTimeoutMs),
+    });
+  } catch (error) {
+    if (error instanceof Error && /abort|timeout/i.test(error.message)) {
+      throw new Error(`Responses API request timed out after ${responsesTimeoutMs}ms.`);
     }
-    return parsed;
-  } finally {
-    if (existsSync(outputPath)) {
-      unlinkSync(outputPath);
-    }
+    throw new Error(
+      `Responses API request failed: ${error instanceof Error ? error.message : "Unknown network error."}`,
+    );
   }
+
+  if (!response.ok) {
+    const details = clipText(await response.text(), 400);
+    throw new Error(
+      `Responses API request failed with HTTP ${response.status}${details ? `: ${details}` : "."}`,
+    );
+  }
+
+  const contentType = asString(response.headers.get("content-type")).toLowerCase();
+  if (contentType.includes("text/event-stream")) {
+    return parseResponsesEventStream(await response.text());
+  }
+
+  if (contentType.includes("application/json")) {
+    return parseResponsesJsonPayload(await response.json());
+  }
+
+  throw new Error(
+    `Responses API returned unsupported content type: ${contentType || "unknown"}.`,
+  );
 }
 
-function normalizeExtraction(raw, { project, note, visitDate }) {
-  const nextActions = asArray(raw.next_actions || raw.nextActions)
+function normalizeExtraction(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Responses API returned an invalid extraction payload.");
+  }
+
+  const resolvedIssues = asArray(raw.issues).map((item) => {
+    const resolved = resolveIssueTagName(item);
+    if (!resolved && asString(item)) {
+      throw new Error(`Responses API returned an unknown issue tag: ${asString(item)}.`);
+    }
+    return resolved;
+  });
+
+  const nextActions = asArray(raw.next_actions)
     .map((item) => ({
       title: clipText(asString(item?.title), 80),
-      assigneeName: clipText(asString(item?.assignee_name || item?.assigneeName), 40),
-      dueDate: normalizeDateOnly(item?.due_date || item?.dueDate) || "",
+      assigneeName: clipText(asString(item?.assignee_name), 40),
+      dueDate: normalizeDateOnly(item?.due_date),
     }))
-    .filter((item) => item.title);
+    .map((item, index) => {
+      if (!item.title) {
+        throw new Error(`Responses API returned next_actions[${index}] without a title.`);
+      }
+      return item;
+    });
+
+  if (!nextActions.length) {
+    throw new Error("Responses API returned no next_actions.");
+  }
+
+  const stageAfterUpdate = resolveStageName(raw.stage_after_update);
+  if (!stageAfterUpdate) {
+    throw new Error(
+      `Responses API returned an unknown stage_after_update: ${asString(raw.stage_after_update) || "(empty)"}.`,
+    );
+  }
 
   return {
     department: clipText(asString(raw.department), 80),
@@ -573,125 +581,15 @@ function normalizeExtraction(raw, { project, note, visitDate }) {
         role: clipText(asString(item?.role), 40),
       })),
     ).filter((item) => item.name),
-    feedbackSummary: clipText(asString(raw.feedback_summary || raw.feedbackSummary) || note, 260),
+    feedbackSummary: clipText(asString(raw.feedback_summary), 260),
     blockers: clipText(asString(raw.blockers), 180),
     opportunities: clipText(asString(raw.opportunities), 180),
-    issues: uniqueStrings(
-      asArray(raw.issues)
-        .map((item) => resolveIssueTagName(asString(item)))
-        .filter(Boolean),
-    ),
-    nextActions: nextActions.length
-      ? nextActions
-      : [{ title: fallbackActionTitle(note), assigneeName: "", dueDate: fallbackTaskDueDate(visitDate).slice(0, 10) }],
-    stageAfterUpdate:
-      resolveStageName(asString(raw.stage_after_update || raw.stageAfterUpdate)) ||
-      getStageById(project.currentStageId).name,
-    managerAttentionNeeded: Boolean(
-      raw.manager_attention_needed ?? raw.managerAttentionNeeded ?? inferAttentionFlag(note),
-    ),
-    nextStep:
-      clipText(asString(raw.next_step || raw.nextStep), 120) ||
-      nextActions[0]?.title ||
-      fallbackActionTitle(note),
+    issues: uniqueStrings(resolvedIssues.filter(Boolean)),
+    nextActions,
+    stageAfterUpdate,
+    managerAttentionNeeded: Boolean(raw.manager_attention_needed),
+    nextStep: clipText(asString(raw.next_step), 120),
   };
-}
-function fallbackExtractIntake({ project, note, visitDate }) {
-  const issues = store.issueTags.filter((tag) => matchesIssueKeyword(tag.name, note)).map((tag) => tag.name);
-  const nextStep = inferNextStep(note, issues);
-
-  return {
-    department: inferDepartment(project.hospitalId, note),
-    contacts: inferContacts(note),
-    feedbackSummary: clipText(note, 260),
-    blockers: inferBlockers(note, issues),
-    opportunities: inferOpportunities(note),
-    issues,
-    nextActions: [{ title: nextStep, assigneeName: "", dueDate: fallbackTaskDueDate(visitDate).slice(0, 10) }],
-    stageAfterUpdate: inferStageFromText(note) || getStageById(project.currentStageId).name,
-    managerAttentionNeeded: inferAttentionFlag(note),
-    nextStep,
-  };
-}
-
-function inferDepartment(hospitalId, note) {
-  const currentDepartments = store.departments.filter((item) => item.hospitalId === hospitalId);
-  for (const department of currentDepartments) {
-    if (note.includes(department.name)) {
-      return department.name;
-    }
-  }
-
-  return ["疼痛科", "麻醉科", "康复科", "骨科", "介入科", "护理部"].find((item) => note.includes(item)) || "";
-}
-
-function inferContacts(note) {
-  const matches = [];
-  const pattern = /([\u4e00-\u9fa5]{1,3})(主任|院长|护士长|老师|医生)/g;
-  let match = null;
-  while ((match = pattern.exec(note))) {
-    matches.push({ name: `${match[1]}${match[2]}`, role: match[2] });
-  }
-  return ensureUniqueByName(matches);
-}
-
-function inferBlockers(note, issues) {
-  if (/卡|阻|收费|采购|流程|无法|担心/.test(note)) {
-    return clipText(note, 180);
-  }
-  return issues.length ? `当前存在${issues.join("、")}相关阻力，需要继续跟进。` : "";
-}
-
-function inferOpportunities(note) {
-  return /认可|愿意|接受|有兴趣|安排培训|推进/.test(note) ? clipText(note, 160) : "";
-}
-
-function inferNextStep(note, issues) {
-  if (/培训/.test(note)) {
-    return "确认培训时间并准备培训材料";
-  }
-  if (/试用|病例|使用/.test(note)) {
-    return "跟进试用反馈并确认下一轮推进意见";
-  }
-  if (/收费|医保|成本/.test(note)) {
-    return "补充收费与经济性说明材料";
-  }
-  if (/采购/.test(note)) {
-    return "梳理采购流程并确认所需材料";
-  }
-  return issues.length ? `围绕${issues.join("、")}问题安排下一轮沟通` : fallbackActionTitle(note);
-}
-
-function fallbackActionTitle(note) {
-  return /支持|总部/.test(note) ? "整理问题并提交给管理层跟进" : "整理本次医院反馈并安排下一次跟进";
-}
-
-function inferStageFromText(note) {
-  const rules = [
-    { pattern: /常规使用|稳定使用|持续使用/, value: "常规使用" },
-    { pattern: /培训|操作培训|培训排期/, value: "培训排期" },
-    { pattern: /试用|评估|病例/, value: "试用评估" },
-    { pattern: /科室|接触|拜访|会面/, value: "科室接触" },
-    { pattern: /建档|目标医院/, value: "目标建档" },
-  ];
-  return rules.find((item) => item.pattern.test(note))?.value || "";
-}
-
-function matchesIssueKeyword(issueName, note) {
-  const patterns = {
-    收费: /收费|医保|成本|价格|预算/,
-    培训: /培训|带教|操作/,
-    采购流程: /采购|招标|准入|审批/,
-    临床价值: /价值|疗效|证据|病例/,
-    院内协同: /协同|护理部|设备科|院办|多科室/,
-    使用流程: /流程|路径|操作习惯/,
-    科室支持: /主任|护士长|带头|支持力度/,
-  };
-  return patterns[issueName]?.test(note) || false;
-}
-
-function inferAttentionFlag(text) {
-  return /卡|阻|收费|采购|担心|总部|支持|无法|招标/.test(text);
 }
 
 function ensureDepartment(hospitalId, departmentName) {
@@ -765,12 +663,7 @@ function resolveIssueTagName(name) {
     return "";
   }
 
-  const exact = store.issueTags.find((item) => item.name === normalized);
-  if (exact) {
-    return exact.name;
-  }
-
-  return store.issueTags.find((item) => normalized.includes(item.name) || item.name.includes(normalized))?.name || "";
+  return store.issueTags.find((item) => item.name === normalized)?.name || "";
 }
 
 function resolveStageId(stageName) {
@@ -784,19 +677,7 @@ function resolveStageName(stageName) {
     return "";
   }
 
-  const exact = store.stages.find((item) => item.name === normalized);
-  if (exact) {
-    return exact.name;
-  }
-
-  const rules = [
-    { pattern: /常规|使用/, value: "常规使用" },
-    { pattern: /培训/, value: "培训排期" },
-    { pattern: /试用|评估/, value: "试用评估" },
-    { pattern: /科室|接触|拜访/, value: "科室接触" },
-    { pattern: /建档|目标/, value: "目标建档" },
-  ];
-  return rules.find((item) => item.pattern.test(normalized))?.value || "";
+  return store.stages.find((item) => item.name === normalized)?.name || "";
 }
 
 function deriveRiskLevel({ managerAttentionNeeded, issueCount, blockers, stalledDays }) {
@@ -906,12 +787,6 @@ function todayDateOnly() {
   return nowIso().slice(0, 10);
 }
 
-function fallbackTaskDueDate(baseDate) {
-  const date = new Date(`${baseDate}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + 7);
-  return date.toISOString();
-}
-
 function calculateStalledDays(isoString) {
   if (!isoString) {
     return 999;
@@ -985,96 +860,141 @@ function createId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function getCodexHealth() {
-  const launch = getCodexLaunchSpec();
-  if (!launch.available) {
-    return { available: false, loggedIn: false, message: launch.message };
+function getResponsesApiHealth() {
+  if (!responsesBaseUrl) {
+    return { configured: false, message: "RESPONSES_BASE_URL is required." };
+  }
+  if (/\/responses\/?$/i.test(responsesBaseUrl)) {
+    return {
+      configured: false,
+      message: "RESPONSES_BASE_URL must point to the API root, for example https://api.asxs.top/v1.",
+    };
+  }
+  if (!responsesApiKey) {
+    return { configured: false, message: "OPENAI_API_KEY is required for intake extraction." };
+  }
+  if (!responsesModel) {
+    return { configured: false, message: "RESPONSES_MODEL is required for intake extraction." };
   }
 
-  const result = spawnSync(launch.command, [...launch.prefixArgs, "login", "status"], {
-    cwd: __dirname,
-    env: process.env,
-    encoding: "utf8",
-    timeout: 10000,
-    windowsHide: true,
-  });
-
-  if (result.error) {
-    return { available: false, loggedIn: false, message: result.error.message };
-  }
-
-  const message = asString(result.stdout || result.stderr);
-  return {
-    available: result.status === 0,
-    loggedIn: result.status === 0 && /logged in/i.test(message),
-    message: message || "Unknown Codex CLI status.",
-  };
+  return { configured: true, message: "Responses API configured." };
 }
 
-function getCodexLaunchSpec() {
-  if (process.platform !== "win32") {
-    return { available: true, command: configuredCodexPath, prefixArgs: [], display: configuredCodexPath };
-  }
+function parseResponsesEventStream(streamText) {
+  let outputText = "";
+  let responseError = null;
 
-  const resolvedPath = resolveCodexPathOnWindows(configuredCodexPath);
-  if (!resolvedPath) {
-    return { available: false, message: `Could not resolve ${configuredCodexPath} on PATH.` };
-  }
-
-  if (/\.cmd$/i.test(resolvedPath) || /\.ps1$/i.test(resolvedPath)) {
-    const scriptPath = path.join(
-      path.dirname(resolvedPath),
-      "node_modules",
-      "@openai",
-      "codex",
-      "bin",
-      "codex.js",
-    );
-
-    if (existsSync(scriptPath)) {
-      return {
-        available: true,
-        command: process.execPath,
-        prefixArgs: [scriptPath],
-        display: resolvedPath,
-      };
+  for (const entry of parseSseEntries(streamText)) {
+    if (!entry.data || entry.data === "[DONE]") {
+      continue;
     }
 
-    return { available: false, message: `Found ${resolvedPath} but could not locate codex.js beside it.` };
+    let payload;
+    try {
+      payload = JSON.parse(entry.data);
+    } catch {
+      throw new Error("Responses API returned malformed SSE data.");
+    }
+
+    if (payload.type === "response.output_text.delta" && typeof payload.delta === "string") {
+      outputText += payload.delta;
+    }
+
+    if (payload.type === "response.output_text.done" && typeof payload.text === "string") {
+      outputText = payload.text;
+    }
+
+    if (payload.type === "response.completed" && payload.response?.error) {
+      responseError = payload.response.error;
+    }
+
+    if ((payload.type === "response.failed" || payload.type === "response.error") && payload.error) {
+      responseError = payload.error;
+    }
   }
 
-  return { available: true, command: resolvedPath, prefixArgs: [], display: resolvedPath };
+  if (responseError) {
+    throw new Error(formatResponsesApiError(responseError));
+  }
+  if (!outputText) {
+    throw new Error("Responses API stream completed without output text.");
+  }
+
+  return parseStructuredResponseText(outputText);
 }
 
-function resolveCodexPathOnWindows(target) {
-  if (existsSync(target)) {
-    return target;
+function parseResponsesJsonPayload(payload) {
+  if (payload?.error) {
+    throw new Error(formatResponsesApiError(payload.error));
   }
 
-  const candidates = [/\.cmd$/i.test(target) || /\.ps1$/i.test(target) ? target : `${target}.cmd`, target];
-  for (const name of candidates) {
-    const result = spawnSync("where.exe", [name], {
-      cwd: __dirname,
-      env: process.env,
-      encoding: "utf8",
-      timeout: 10000,
-      windowsHide: true,
-    });
-    if (result.status === 0) {
-      const match = (result.stdout || "")
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find(Boolean);
-      if (match) {
-        return match;
+  const outputText =
+    asString(payload?.output_text) ||
+    asArray(payload?.output)
+      .flatMap((item) => asArray(item?.content))
+      .filter((item) => item?.type === "output_text")
+      .map((item) => asString(item?.text))
+      .join("");
+
+  if (!outputText) {
+    throw new Error("Responses API JSON response did not include output_text.");
+  }
+
+  return parseStructuredResponseText(outputText);
+}
+
+function parseStructuredResponseText(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Responses API returned invalid JSON: ${clipText(text, 240) || "empty response"}`);
+  }
+}
+
+function parseSseEntries(streamText) {
+  return streamText
+    .split(/\r?\n\r?\n/)
+    .map((block) => {
+      const entry = { event: "", data: "" };
+      const dataLines = [];
+
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith("event:")) {
+          entry.event = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trimStart());
+        }
       }
-    }
-  }
 
-  return null;
+      entry.data = dataLines.join("\n");
+      return entry;
+    })
+    .filter((entry) => entry.event || entry.data);
 }
 
-function normalizeSandbox(value) {
-  const allowed = new Set(["read-only", "workspace-write", "danger-full-access"]);
-  return allowed.has(value) ? value : "read-only";
+function formatResponsesApiError(error) {
+  if (!error) {
+    return "Responses API returned an unknown error.";
+  }
+
+  if (typeof error === "string") {
+    return `Responses API error: ${error}`;
+  }
+
+  const code = asString(error.code);
+  const message = asString(error.message) || asString(error.type) || "Unknown error.";
+  return code ? `Responses API error (${code}): ${message}` : `Responses API error: ${message}`;
+}
+
+function normalizeResponsesBaseUrl(value) {
+  return asString(value).replace(/\/+$/, "");
+}
+
+function toPositiveInteger(value, fallbackValue) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallbackValue;
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(readFileSync(filePath, "utf8"));
 }

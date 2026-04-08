@@ -2,13 +2,15 @@
 
 这是一个最小可运行的前后端原型，用于演示“AI 结构化纪要 + 医院项目台账 + 任务中心 + 管理汇总”四个核心模块。
 
-当前版本直接复用你本机已经登录的 `codex` CLI，不需要额外配置 `OPENAI_API_KEY`。
+当前版本由应用服务直接通过 Node 调用 `https://api.asxs.top/v1/responses`，不再依赖本机或容器内的 `codex exec`。
+
+部署与运维实操文档见：`ALIYUN_DOCKER_NODE_CODEX_RUNBOOK.md`
 
 ## 技术栈
 
 - Node.js
 - Express
-- 本机 Codex CLI
+- Responses API
 - 原生 HTML / CSS / JavaScript
 - 本地 JSON 数据仓
 
@@ -45,9 +47,10 @@ copy .env.example .env
 
 ```env
 PORT=3000
-CODEX_CLI_PATH=codex
-CODEX_MODEL=
-CODEX_SANDBOX=read-only
+RESPONSES_BASE_URL=https://api.asxs.top/v1
+RESPONSES_MODEL=gpt-5.4
+RESPONSES_TIMEOUT_MS=120000
+OPENAI_API_KEY=
 ```
 
 4. 启动服务
@@ -62,20 +65,55 @@ npm start
 http://localhost:3000
 ```
 
+## 一键部署到阿里云（双击）
+
+1. 准备部署环境文件
+
+```bash
+copy .env.deploy.example .env.deploy
+```
+
+然后编辑 `.env.deploy`，至少填入非空 `OPENAI_API_KEY`。
+
+2. 确认本机已安装并可执行以下命令
+
+- `powershell`
+- `ssh`
+- `scp`
+- `npm`
+
+3. 双击仓库根目录下的 `deploy-aliyun.bat`
+
+- 默认目标服务器为 `root@47.116.122.8`
+- 默认部署目录为 `/root/apps/tangproject`
+- 脚本会优先尝试 SSH key 登录；若不可用，会提示输入 SSH 密码（也可提前设置环境变量 `ALIYUN_SSH_PASSWORD`）
+- 脚本会自动执行：
+  - 本地 `npm run check`
+  - 远端 Docker 前置检查
+  - 文件同步
+  - `docker compose build --no-cache` + `up -d --force-recreate`
+  - 部署后 `api/health` 和 `api/bootstrap` 校验
+
+4. 失败排查
+
+- 详细流程与命令说明见 `ALIYUN_DOCKER_NODE_CODEX_RUNBOOK.md`
+- 如果脚本失败，窗口会保留错误输出，不会静默降级
+
 ## 数据与抽取方式
 
 - 演示数据保存在 `data/store.json`
 - 初始种子数据来自 `data/seed-store.json`
 - 结构化输出 schema 位于 `data/intake-schema.json`
-- 正常情况下，后端通过本机 `codex exec` 生成结构化 JSON
-- 如果本机 Codex 不可用，系统会自动切换到启发式抽取
+- 后端会向 `RESPONSES_BASE_URL + /responses` 发起流式请求
+- 结构化输出通过 Responses API 的 `json_schema` 格式约束生成
+- 缺少 `OPENAI_API_KEY`、`RESPONSES_BASE_URL` 配错，或接口返回异常时，系统会直接报错，不做本地兜底抽取
 
 ## 我本地验证过
 
 - `GET /api/health` 正常返回，且 `configured: true`
 - `GET /api/bootstrap` 正常返回项目、任务和汇总数据
 - 页面首页 `GET /` 返回 `200`
-- `POST /api/intake` 可调用本机 Codex 生成结构化结果
+- `POST /api/intake` 可直接调用 Responses API 生成结构化结果
 - `PATCH /api/tasks/:taskId` 可更新任务状态并刷新页面数据
 
 ## 已知边界

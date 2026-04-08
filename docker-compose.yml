@@ -1,0 +1,14 @@
+services:
+  tang-project:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/tang-project:latest
+    container_name: tang-project
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env.example
+    volumes:
+      - ./data:/app/data

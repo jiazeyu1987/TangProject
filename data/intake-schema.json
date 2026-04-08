@@ -41,14 +41,15 @@
         "additionalProperties": false,
         "required": ["title", "assignee_name", "due_date"],
         "properties": {
-          "title": { "type": "string" },
+          "title": { "type": "string", "minLength": 1 },
           "assignee_name": { "type": "string" },
           "due_date": { "type": "string" }
         }
-      }
+      },
+      "minItems": 1
     },
-    "stage_after_update": { "type": "string" },
+    "stage_after_update": { "type": "string", "minLength": 1 },
     "manager_attention_needed": { "type": "boolean" },
-    "next_step": { "type": "string" }
+    "next_step": { "type": "string", "minLength": 1 }
   }
 }

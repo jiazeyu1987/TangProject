@@ -346,7 +346,7 @@ button {
   font-size: 0.75rem;
 }
 
-.result-badge.is-codex,
+.result-badge.is-responses,
 .stage-pill,
 .risk-low {
   color: var(--green-strong);

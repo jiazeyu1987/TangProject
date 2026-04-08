@@ -160,12 +160,7 @@ async function submitIntake() {
     persistSelection();
     elements.noteInput.value = "";
     renderAll();
-    showToast(
-      payload.extractionSource === "codex"
-        ? "结构化结果已生成并同步入台账"
-        : "Codex 当前不可用，系统已切换至应急抽取模式",
-      payload.extractionSource === "codex" ? "ready" : "warn",
-    );
+    showToast("结构化结果已生成并同步入台账", "ready");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "纪要提交失败", "error");
   } finally {
@@ -261,8 +256,8 @@ function renderIntakeResult() {
       <div class="result-empty">
         <p>本次结构化结果将在提交后展示于此。</p>
         <ul>
-          <li>系统将提取科室、联系人、问题标签、阶段变化和下一步动作</li>
-          <li>当本机 Codex 不可用时，系统将自动切换至启发式应急抽取</li>
+          <li>系统将通过 Responses API 提取科室、联系人、问题标签、阶段变化和下一步动作</li>
+          <li>如果接口未配置或抽取失败，提交会直接返回错误信息</li>
           <li>提交完成后，项目台账、任务中心与管理汇总会同步刷新</li>
         </ul>
       </div>
@@ -273,8 +268,8 @@ function renderIntakeResult() {
   const { extraction, extractionSource, extractionWarnings = [] } = state.lastResult;
   elements.intakeResult.innerHTML = `
     <div class="result-head">
-      <span class="result-badge ${extractionSource === "codex" ? "is-codex" : "is-fallback"}">
-        ${extractionSource === "codex" ? "结构化来源：本机 Codex" : "结构化来源：应急抽取"}
+      <span class="result-badge ${extractionSource === "responses-api" ? "is-responses" : "is-fallback"}">
+        ${extractionSource === "responses-api" ? "结构化来源：Responses API" : "结构化来源：未知"}
       </span>
       <span class="mini-meta">阶段更新：${escapeHtml(extraction.stageAfterUpdate)}</span>
       <span class="mini-meta">管理关注：${extraction.managerAttentionNeeded ? "需要" : "无需"}</span>
@@ -527,7 +522,7 @@ function getSelectedProject() {
 }
 
 function applyHealthState(health) {
-  document.title = health.configured ? "AI 医院导入管理系统" : "AI 医院导入管理系统 · 降级模式";
+  document.title = health.configured ? "AI 医院导入管理系统" : "AI 医院导入管理系统 · 接口未配置";
 }
 
 function setBusy(isBusy) {
