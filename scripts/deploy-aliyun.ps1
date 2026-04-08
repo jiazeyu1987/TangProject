@@ -191,6 +191,7 @@ try {
   )
   $requiredDataFiles = @(
     "data/intake-schema.json",
+    "data/followup-question-schema.json",
     "data/seed-store.json"
   )
 

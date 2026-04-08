@@ -27,20 +27,31 @@
 
             <form id="intakeForm" class="intake-form">
               <div class="field-row">
-                <label>
-                  <span>医院项目</span>
+                <label class="project-field">
+                  <div class="field-title-row">
+                    <span>医院项目</span>
+                    <div class="project-tools">
+                      <button id="projectAddButton" class="chip chip-icon" type="button" title="增加医院">+</button>
+                      <button id="projectSearchButton" class="chip chip-icon" type="button" title="查询医院">查</button>
+                    </div>
+                  </div>
+                  <div id="projectSearchWrap" class="project-search-wrap is-hidden">
+                    <input id="projectSearchInput" type="search" placeholder="输入医院关键词" autocomplete="off" />
+                  </div>
                   <select id="projectSelect" required></select>
+                  <p class="field-meta">
+                    <span>当前阶段：<strong id="projectStageText">--</strong></span>
+                    <em>阶段由系统根据纪要自动更新</em>
+                  </p>
                 </label>
                 <label>
                   <span>拜访日期</span>
-                  <input id="visitDateInput" type="date" required />
+                  <select id="visitDatePreset" required>
+                    <option value="today" selected>今天（默认）</option>
+                    <option value="yesterday">昨天</option>
+                    <option value="day_before_yesterday">前天</option>
+                  </select>
                 </label>
-              </div>
-
-              <div id="promptChips" class="prompt-chips">
-                <button class="chip" data-template="trial" type="button">试用反馈</button>
-                <button class="chip" data-template="training" type="button">培训推进</button>
-                <button class="chip" data-template="blocker" type="button">阻塞升级</button>
               </div>
 
               <label>
@@ -55,7 +66,10 @@
 
               <div class="form-foot">
                 <p class="hint">建议记录完整业务信息，以便系统准确生成项目更新与任务动作。</p>
-                <button id="submitButton" class="primary-button" type="submit">提交纪要</button>
+                <div class="form-actions">
+                  <button id="aiFollowupButton" class="chip ai-followup-button" type="button">AI追问</button>
+                  <button id="submitButton" class="primary-button" type="submit">生成纪要</button>
+                </div>
               </div>
             </form>
 
@@ -122,7 +136,7 @@
                 <p class="section-eyebrow">Insights</p>
                 <h2>管理汇总</h2>
               </div>
-              <p class="section-copy">按阶段分布、高频问题和最新动态汇总项目情况，支撑管理判断与资源配置。</p>
+              <p class="section-copy">按阶段分布、高频问题和最新动态汇总项目情况，支持管理判断与资源配置。</p>
             </div>
             <div id="insightPanel" class="insight-panel"></div>
           </article>
@@ -138,6 +152,45 @@
       </nav>
 
       <div id="toast" class="toast" hidden></div>
+    </div>
+
+    <div id="projectModal" class="modal-backdrop" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="projectModalTitle">
+        <div class="modal-head">
+          <h3 id="projectModalTitle">新增医院项目</h3>
+          <button id="projectModalCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
+        </div>
+        <form id="projectModalForm" class="modal-form">
+          <label>
+            <span>医院名称</span>
+            <input id="newHospitalNameInput" type="text" maxlength="120" required />
+          </label>
+          <label>
+            <span>城市</span>
+            <input id="newHospitalCityInput" type="text" maxlength="40" />
+          </label>
+          <div class="modal-actions">
+            <button id="newProjectSubmitButton" class="primary-button" type="submit">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="followupDialog" class="modal-backdrop" hidden>
+      <div class="modal-card modal-card-followup" role="dialog" aria-modal="true" aria-labelledby="followupDialogTitle">
+        <div class="modal-head">
+          <h3 id="followupDialogTitle">AI追问</h3>
+          <button id="followupDialogCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
+        </div>
+        <p class="modal-copy">请先回答以下追问，回答完成后点击“保存回答”，再点击“再次生成纪要”。</p>
+        <form id="followupDialogForm" class="modal-form">
+          <div id="followupDialogQuestionList" class="followup-dialog-list"></div>
+          <div class="modal-actions">
+            <button id="followupDialogCancelButton" class="chip" type="button">取消</button>
+            <button id="followupDialogSubmitButton" class="primary-button" type="submit">保存回答</button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <script type="module" src="/app.js"></script>

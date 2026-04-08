@@ -19,7 +19,9 @@ const DATA_DIR = path.join(__dirname, "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 const SEED_STORE_PATH = path.join(DATA_DIR, "seed-store.json");
 const INTAKE_SCHEMA_PATH = path.join(DATA_DIR, "intake-schema.json");
+const FOLLOWUP_QUESTIONS_SCHEMA_PATH = path.join(DATA_DIR, "followup-questions-schema.json");
 const INTAKE_RESPONSE_SCHEMA = readJsonFile(INTAKE_SCHEMA_PATH);
+const FOLLOWUP_QUESTIONS_RESPONSE_SCHEMA = readJsonFile(FOLLOWUP_QUESTIONS_SCHEMA_PATH);
 
 const port = Number(process.env.PORT || 3000);
 const responsesBaseUrl = normalizeResponsesBaseUrl(
@@ -28,6 +30,7 @@ const responsesBaseUrl = normalizeResponsesBaseUrl(
 const responsesModel = process.env.RESPONSES_MODEL?.trim() || "gpt-5.4";
 const responsesApiKey = process.env.OPENAI_API_KEY?.trim() || "";
 const responsesTimeoutMs = toPositiveInteger(process.env.RESPONSES_TIMEOUT_MS, 120000);
+const SUPERVISOR_ROLES = new Set(["regional_manager", "district_manager", "director", "supervisor", "vp"]);
 
 let store = loadOrCreateStore();
 
@@ -69,10 +72,523 @@ app.patch("/api/tasks/:taskId", (req, res) => {
   });
 });
 
+app.post("/api/projects", (req, res) => {
+  const hospitalName = clipText(asString(req.body?.hospitalName), 120);
+  const city = clipText(asString(req.body?.city), 40);
+  const hospitalLevel = clipText(asString(req.body?.hospitalLevel), 20) || "未知";
+  const currentUser = getCurrentUser();
+  const defaultStage = [...store.stages].sort((left, right) => left.sortOrder - right.sortOrder)[0];
+  const regionId = asString(req.body?.regionId) || currentUser?.regionId || store.regions[0]?.id || "";
+  const ownerUserId = asString(req.body?.ownerUserId) || currentUser?.id || store.users[0]?.id || "";
+  const currentStageId = asString(req.body?.currentStageId) || defaultStage?.id || "";
+
+  if (!hospitalName) {
+    res.status(400).json({ error: "hospitalName is required." });
+    return;
+  }
+  if (!regionId || !getRegionById(regionId)) {
+    res.status(400).json({ error: "regionId is invalid." });
+    return;
+  }
+  if (!ownerUserId || !getUserById(ownerUserId)) {
+    res.status(400).json({ error: "ownerUserId is invalid." });
+    return;
+  }
+  if (!currentStageId || !getStageById(currentStageId)) {
+    res.status(400).json({ error: "currentStageId is invalid." });
+    return;
+  }
+
+  const duplicate = store.hospitals.find(
+    (item) => item.name.toLowerCase() === hospitalName.toLowerCase(),
+  );
+  if (duplicate) {
+    res.status(409).json({ error: "Hospital already exists." });
+    return;
+  }
+
+  const hospital = {
+    id: createId("hospital"),
+    regionId,
+    name: hospitalName,
+    hospitalLevel,
+    city,
+  };
+  store.hospitals.push(hospital);
+
+  const project = {
+    id: createId("project"),
+    hospitalId: hospital.id,
+    regionId,
+    ownerUserId,
+    currentStageId,
+    riskLevel: "normal",
+    managerAttentionNeeded: false,
+    lastFollowUpAt: nowIso(),
+    nextAction: "",
+    nextActionDueAt: null,
+    latestSummary: "新建医院项目，待录入首次纪要。",
+    currentIssueTagIds: [],
+    latestUpdateId: null,
+  };
+  store.projects.push(project);
+
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    hospital,
+    project: buildProjectView(project),
+    bootstrap: buildBootstrapPayload(),
+  });
+});
+
+app.post("/api/projects/:projectId/remarks", (req, res) => {
+  const projectId = asString(req.params?.projectId);
+  const content = clipText(asString(req.body?.content), 300);
+  const toUserId = asString(req.body?.toUserId);
+  const updateId = asString(req.body?.updateId);
+  const currentUser = getCurrentUser();
+  const project = getProjectById(projectId);
+
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required." });
+    return;
+  }
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+  if (!currentUser) {
+    res.status(400).json({ error: "Current user is invalid." });
+    return;
+  }
+  if (!SUPERVISOR_ROLES.has(asString(currentUser.role))) {
+    res.status(403).json({ error: "Only supervisors can leave project remarks." });
+    return;
+  }
+  if (!content) {
+    res.status(400).json({ error: "content is required." });
+    return;
+  }
+
+  const targetUserId = toUserId || project.ownerUserId;
+  const targetUser = getUserById(targetUserId);
+  if (!targetUser) {
+    res.status(400).json({ error: "toUserId is invalid." });
+    return;
+  }
+  if (updateId) {
+    const update = store.updates.find((item) => item.id === updateId);
+    if (!update || update.projectId !== project.id) {
+      res.status(400).json({ error: "updateId is invalid for this project." });
+      return;
+    }
+  }
+
+  const remark = {
+    id: createId("remark"),
+    projectId: project.id,
+    updateId: updateId || null,
+    fromUserId: currentUser.id,
+    toUserId: targetUser.id,
+    content,
+    createdAt: nowIso(),
+    replyContent: "",
+    replyByUserId: "",
+    repliedAt: null,
+    readByUserId: "",
+    readAt: null,
+  };
+  store.remarks.push(remark);
+
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    remark: buildProjectRemarkView(remark),
+    project: buildProjectView(project),
+    bootstrap: buildBootstrapPayload(),
+  });
+});
+
+app.post("/api/project-remarks/:remarkId/reply", (req, res) => {
+  const remarkId = asString(req.params?.remarkId);
+  const reply = clipText(asString(req.body?.reply), 300);
+  const currentUser = getCurrentUser();
+  const remark = getRemarkById(remarkId);
+
+  if (!remarkId) {
+    res.status(400).json({ error: "remarkId is required." });
+    return;
+  }
+  if (!remark) {
+    res.status(404).json({ error: "Remark not found." });
+    return;
+  }
+  if (!reply) {
+    res.status(400).json({ error: "reply is required." });
+    return;
+  }
+  if (!currentUser) {
+    res.status(400).json({ error: "Current user is invalid." });
+    return;
+  }
+  if (remark.replyContent) {
+    res.status(400).json({ error: "Remark has already been replied." });
+    return;
+  }
+
+  const project = getProjectById(remark.projectId);
+  if (!project) {
+    res.status(404).json({ error: "Project for remark not found." });
+    return;
+  }
+  if (currentUser.id !== remark.toUserId && currentUser.id !== project.ownerUserId) {
+    res.status(403).json({ error: "Only the assignee can reply this remark." });
+    return;
+  }
+
+  remark.replyContent = reply;
+  remark.replyByUserId = currentUser.id;
+  remark.repliedAt = nowIso();
+  if (!remark.readAt) {
+    remark.readByUserId = currentUser.id;
+    remark.readAt = nowIso();
+  }
+
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    remark: buildProjectRemarkView(remark),
+    project: buildProjectView(project),
+    bootstrap: buildBootstrapPayload(),
+  });
+});
+
+app.post("/api/project-remarks/:remarkId/read", (req, res) => {
+  const remarkId = asString(req.params?.remarkId);
+  const currentUser = getCurrentUser();
+  const remark = getRemarkById(remarkId);
+
+  if (!remarkId) {
+    res.status(400).json({ error: "remarkId is required." });
+    return;
+  }
+  if (!remark) {
+    res.status(404).json({ error: "Remark not found." });
+    return;
+  }
+  if (!currentUser) {
+    res.status(400).json({ error: "Current user is invalid." });
+    return;
+  }
+
+  const project = getProjectById(remark.projectId);
+  if (!project) {
+    res.status(404).json({ error: "Project for remark not found." });
+    return;
+  }
+  const canRead =
+    currentUser.id === remark.toUserId ||
+    currentUser.id === project.ownerUserId ||
+    currentUser.id === remark.fromUserId ||
+    SUPERVISOR_ROLES.has(asString(currentUser.role));
+  if (!canRead) {
+    res.status(403).json({ error: "Current user is not allowed to mark this remark as read." });
+    return;
+  }
+
+  if (!remark.readAt) {
+    remark.readByUserId = currentUser.id;
+    remark.readAt = nowIso();
+    touchStore();
+    persistStore();
+  }
+
+  res.json({
+    ok: true,
+    remark: buildProjectRemarkView(remark),
+    project: buildProjectView(project),
+    bootstrap: buildBootstrapPayload(),
+  });
+});
+
+app.post("/api/followups/question", async (req, res) => {
+  const projectId = asString(req.body?.projectId);
+  const note = asString(req.body?.note);
+  const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
+  const sessionId = asString(req.body?.sessionId);
+  const scenario = parseScenarioPayload(req.body?.scenario);
+  const project = store.projects.find((item) => item.id === projectId);
+
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required." });
+    return;
+  }
+  if (!note) {
+    res.status(400).json({ error: "note is required." });
+    return;
+  }
+  if (!scenario) {
+    res.status(400).json({ error: "scenario is required." });
+    return;
+  }
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+
+  let followupSession;
+  if (sessionId) {
+    followupSession = getFollowupSessionById(sessionId);
+    if (!followupSession) {
+      res.status(404).json({ error: "Follow-up session not found." });
+      return;
+    }
+    if (followupSession.projectId !== projectId) {
+      res.status(400).json({ error: "Follow-up session does not belong to the project." });
+      return;
+    }
+    if (followupSession.closedAt) {
+      res.status(400).json({ error: "Follow-up session has been closed." });
+      return;
+    }
+  } else {
+    followupSession = null;
+  }
+
+  try {
+    const result = await createFollowupQuestions({
+      session: followupSession,
+      project,
+      note,
+      visitDate,
+      scenario,
+      source: "web-followup",
+      minQuestions: 1,
+      maxQuestions: 1,
+    });
+    res.json({
+      ok: true,
+      sessionId: result.sessionId,
+      question: result.questions[0] || null,
+      history: result.history,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to generate follow-up question.",
+    });
+  }
+});
+
+app.post("/api/followups/questions", async (req, res) => {
+  const projectId = asString(req.body?.projectId);
+  const note = asString(req.body?.note);
+  const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
+  const sessionId = asString(req.body?.sessionId);
+  const scenario = parseScenarioPayload(req.body?.scenario);
+  const project = store.projects.find((item) => item.id === projectId);
+
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required." });
+    return;
+  }
+  if (!note) {
+    res.status(400).json({ error: "note is required." });
+    return;
+  }
+  if (!scenario) {
+    res.status(400).json({ error: "scenario is required." });
+    return;
+  }
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+
+  let followupSession;
+  if (sessionId) {
+    followupSession = getFollowupSessionById(sessionId);
+    if (!followupSession) {
+      res.status(404).json({ error: "Follow-up session not found." });
+      return;
+    }
+    if (followupSession.projectId !== projectId) {
+      res.status(400).json({ error: "Follow-up session does not belong to the project." });
+      return;
+    }
+    if (followupSession.closedAt) {
+      res.status(400).json({ error: "Follow-up session has been closed." });
+      return;
+    }
+  } else {
+    followupSession = null;
+  }
+
+  try {
+    const result = await createFollowupQuestions({
+      session: followupSession,
+      project,
+      note,
+      visitDate,
+      scenario,
+      source: "web-followup",
+      minQuestions: 1,
+      maxQuestions: 3,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to generate follow-up question.",
+    });
+  }
+});
+
+app.post("/api/followups/answer", (req, res) => {
+  const sessionId = asString(req.body?.sessionId);
+  const questionMessageId = asString(req.body?.questionMessageId);
+  const answer = asString(req.body?.answer);
+  const scenario = parseScenarioPayload(req.body?.scenario);
+
+  if (!sessionId) {
+    res.status(400).json({ error: "sessionId is required." });
+    return;
+  }
+  if (!questionMessageId) {
+    res.status(400).json({ error: "questionMessageId is required." });
+    return;
+  }
+  if (!answer) {
+    res.status(400).json({ error: "answer is required." });
+    return;
+  }
+  if (!scenario) {
+    res.status(400).json({ error: "scenario is required." });
+    return;
+  }
+
+  const session = getFollowupSessionById(sessionId);
+  if (!session) {
+    res.status(404).json({ error: "Follow-up session not found." });
+    return;
+  }
+  if (session.closedAt) {
+    res.status(400).json({ error: "Follow-up session has been closed." });
+    return;
+  }
+
+  const questionMessage = store.messages.find(
+    (item) =>
+      item.id === questionMessageId &&
+      item.sessionId === sessionId &&
+      item.kind === "followup_question",
+  );
+  if (!questionMessage) {
+    res.status(404).json({ error: "Follow-up question not found." });
+    return;
+  }
+  if (questionMessage.questionStatus !== "pending_answer") {
+    res.status(400).json({ error: "The follow-up question is not waiting for an answer." });
+    return;
+  }
+
+  const result = answerFollowupQuestion({
+    session,
+    questionMessage,
+    answer,
+    scenario,
+  });
+  res.json(result);
+});
+
+app.post("/api/followups/answers", (req, res) => {
+  const sessionId = asString(req.body?.sessionId);
+  const scenario = parseScenarioPayload(req.body?.scenario);
+  const answersRaw = Array.isArray(req.body?.answers) ? req.body.answers : null;
+
+  if (!sessionId) {
+    res.status(400).json({ error: "sessionId is required." });
+    return;
+  }
+  if (!answersRaw || !answersRaw.length) {
+    res.status(400).json({ error: "answers is required and must be a non-empty array." });
+    return;
+  }
+  if (!scenario) {
+    res.status(400).json({ error: "scenario is required." });
+    return;
+  }
+
+  const session = getFollowupSessionById(sessionId);
+  if (!session) {
+    res.status(404).json({ error: "Follow-up session not found." });
+    return;
+  }
+  if (session.closedAt) {
+    res.status(400).json({ error: "Follow-up session has been closed." });
+    return;
+  }
+
+  const normalizedAnswers = answersRaw.map((item) => ({
+    questionMessageId: asString(item?.questionMessageId),
+    answer: asString(item?.answer),
+  }));
+  if (normalizedAnswers.some((item) => !item.questionMessageId || !item.answer)) {
+    res.status(400).json({
+      error: "Each answers item must include questionMessageId and answer.",
+    });
+    return;
+  }
+
+  const uniqueQuestionIds = new Set(normalizedAnswers.map((item) => item.questionMessageId));
+  if (uniqueQuestionIds.size !== normalizedAnswers.length) {
+    res.status(400).json({ error: "answers contains duplicated questionMessageId." });
+    return;
+  }
+
+  const items = [];
+  for (const item of normalizedAnswers) {
+    const questionMessage = store.messages.find(
+      (message) =>
+        message.id === item.questionMessageId &&
+        message.sessionId === sessionId &&
+        message.kind === "followup_question",
+    );
+    if (!questionMessage) {
+      res.status(404).json({ error: `Follow-up question not found: ${item.questionMessageId}` });
+      return;
+    }
+    if (questionMessage.questionStatus !== "pending_answer") {
+      res.status(400).json({
+        error: `The follow-up question is not waiting for an answer: ${item.questionMessageId}`,
+      });
+      return;
+    }
+    items.push({
+      questionMessage,
+      answer: item.answer,
+    });
+  }
+
+  const result = answerFollowupQuestionsBatch({
+    session,
+    items,
+    scenario,
+  });
+  res.json(result);
+});
+
 app.post("/api/intake", async (req, res) => {
   const projectId = asString(req.body?.projectId);
   const note = asString(req.body?.note);
   const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
+  const followupSessionId = asString(req.body?.followupSessionId);
+  const submitScenario = parseScenarioPayload(req.body?.submitScenario);
   const project = store.projects.find((item) => item.id === projectId);
 
   if (!projectId) {
@@ -90,12 +606,82 @@ app.post("/api/intake", async (req, res) => {
     return;
   }
 
+  let followupSession = null;
+  if (followupSessionId) {
+    followupSession = getFollowupSessionById(followupSessionId);
+    if (!followupSession) {
+      res.status(404).json({ error: "Follow-up session not found." });
+      return;
+    }
+    if (followupSession.projectId !== projectId) {
+      res.status(400).json({ error: "Follow-up session does not belong to the project." });
+      return;
+    }
+    if (followupSession.closedAt) {
+      res.status(400).json({ error: "Follow-up session has been closed." });
+      return;
+    }
+  }
+
   try {
-    const result = await processIntake({ project, note, visitDate });
+    const result = await processIntake({ project, note, visitDate, followupSession, submitScenario });
     res.json(result);
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Failed to process intake.",
+    });
+  }
+});
+
+app.post("/api/intake/preview", async (req, res) => {
+  const projectId = asString(req.body?.projectId);
+  const note = asString(req.body?.note);
+  const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
+  const followupSessionId = asString(req.body?.followupSessionId);
+  const project = store.projects.find((item) => item.id === projectId);
+
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required." });
+    return;
+  }
+  if (!note) {
+    res.status(400).json({ error: "note is required." });
+    return;
+  }
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+
+  let followupSession = null;
+  if (followupSessionId) {
+    followupSession = getFollowupSessionById(followupSessionId);
+    if (!followupSession) {
+      res.status(404).json({ error: "Follow-up session not found." });
+      return;
+    }
+    if (followupSession.projectId !== projectId) {
+      res.status(400).json({ error: "Follow-up session does not belong to the project." });
+      return;
+    }
+    if (followupSession.closedAt) {
+      res.status(400).json({ error: "Follow-up session has been closed." });
+      return;
+    }
+  }
+
+  try {
+    const extracted = await extractStructuredUpdate({ project, note, visitDate, followupSession });
+    res.json({
+      ok: true,
+      generatedAt: nowIso(),
+      extractionSource: extracted.source,
+      extractionWarnings: extracted.warnings,
+      extraction: extracted.extraction,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to generate intake preview.",
     });
   }
 });
@@ -199,6 +785,10 @@ function buildProjectView(project) {
     .filter((contact) => contact.hospitalId === project.hospitalId)
     .sort((left, right) => compareIsoDesc(left.lastContactAt, right.lastContactAt))
     .map((contact) => buildContactView(contact));
+  const remarks = store.remarks
+    .filter((remark) => remark.projectId === project.id)
+    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt))
+    .map((remark) => buildProjectRemarkView(remark));
   const stalledDays = calculateStalledDays(project.lastFollowUpAt);
 
   return {
@@ -230,12 +820,15 @@ function buildProjectView(project) {
       .filter(Boolean),
     blockers: updates[0]?.blockers || "",
     contacts,
+    remarks,
     tasks,
     updates,
     metrics: {
       openTaskCount: tasks.filter((task) => task.status !== "completed").length,
       overdueTaskCount: tasks.filter((task) => task.overdue).length,
       updateCount: updates.length,
+      remarkCount: remarks.length,
+      remarkRepliedCount: remarks.filter((item) => item.replyContent).length,
     },
     stalledDays,
     isStalled: stalledDays >= 10,
@@ -311,8 +904,387 @@ function buildUserView(user) {
   };
 }
 
-async function processIntake({ project, note, visitDate }) {
-  const extracted = await extractStructuredUpdate({ project, note, visitDate });
+function buildProjectRemarkView(remark) {
+  const fromUser = getUserById(remark.fromUserId);
+  const toUser = getUserById(remark.toUserId);
+  const replyByUser = getUserById(remark.replyByUserId);
+  const readByUser = getUserById(remark.readByUserId);
+
+  return {
+    id: remark.id,
+    projectId: remark.projectId,
+    updateId: remark.updateId || null,
+    fromUserId: remark.fromUserId,
+    fromUserName: fromUser?.name || "未知上级",
+    toUserId: remark.toUserId,
+    toUserName: toUser?.name || "未知成员",
+    content: remark.content,
+    createdAt: remark.createdAt,
+    replyContent: remark.replyContent || "",
+    replyByUserId: remark.replyByUserId || "",
+    replyByUserName: replyByUser?.name || "",
+    repliedAt: remark.repliedAt || null,
+    readByUserId: remark.readByUserId || "",
+    readByUserName: readByUser?.name || "",
+    readAt: remark.readAt || null,
+    isRead: Boolean(remark.readAt),
+    status: remark.replyContent ? "replied" : "pending",
+  };
+}
+
+function createFollowupSession({ project, note, visitDate, scenario, source }) {
+  const currentUser = getCurrentUser();
+  const normalizedScenario = normalizeScenarioForStorage({
+    scenario,
+    operation: "generate",
+    project,
+  });
+
+  const session = {
+    id: createId("session"),
+    projectId: project.id,
+    userId: currentUser?.id || "",
+    source: source || "web-followup",
+    sessionType: "followup",
+    scenario: normalizedScenario,
+    visitDate,
+    closedAt: null,
+    closedReason: "",
+    linkedIntakeSessionId: null,
+    createdAt: nowIso(),
+  };
+  store.sessions.push(session);
+
+  store.messages.push({
+    id: createId("message"),
+    sessionId: session.id,
+    senderType: "user",
+    kind: "followup_seed",
+    round: 0,
+    questionStatus: null,
+    relatedMessageId: null,
+    scenarioSnapshot: normalizedScenario,
+    content: note,
+    createdAt: nowIso(),
+  });
+
+  return session;
+}
+
+async function createFollowupQuestions({
+  session,
+  project,
+  note,
+  visitDate,
+  scenario,
+  source,
+  minQuestions = 1,
+  maxQuestions = 3,
+}) {
+  const normalizedScenario = normalizeScenarioForStorage({
+    scenario,
+    operation: "generate",
+    project,
+  });
+  const history = session ? buildFollowupHistory(session.id) : [];
+  const pendingQuestions = session ? findPendingFollowupQuestions(session.id) : [];
+  const extracted = await extractFollowupQuestions({
+    project,
+    note,
+    visitDate,
+    history,
+    minQuestions,
+    maxQuestions,
+  });
+
+  const activeSession =
+    session ||
+    createFollowupSession({
+      project,
+      note,
+      visitDate,
+      scenario,
+      source,
+    });
+
+  for (const pendingQuestion of pendingQuestions) {
+    pendingQuestion.questionStatus = "unsatisfied";
+  }
+
+  let round =
+    store.messages
+      .filter((item) => item.sessionId === activeSession.id && item.kind === "followup_question")
+      .reduce((max, item) => Math.max(max, Number(item.round) || 0), 0);
+  const questionMessages = extracted.questions.map((item) => {
+    round += 1;
+    return {
+      id: createId("message"),
+      sessionId: activeSession.id,
+      senderType: "assistant",
+      kind: "followup_question",
+      round,
+      questionStatus: "pending_answer",
+      relatedMessageId: null,
+      scenarioSnapshot: normalizedScenario,
+      content: item.question,
+      intent: item.intent,
+      createdAt: nowIso(),
+    };
+  });
+  store.messages.push(...questionMessages);
+
+  touchStore();
+  persistStore();
+
+  return {
+    ok: true,
+    sessionId: activeSession.id,
+    questions: questionMessages.map((message) => buildFollowupQuestionView(message)),
+    history: buildFollowupHistory(activeSession.id),
+  };
+}
+
+function answerFollowupQuestion({ session, questionMessage, answer, scenario }) {
+  const result = answerFollowupQuestionsBatch({
+    session,
+    items: [{ questionMessage, answer }],
+    scenario,
+  });
+  return {
+    ok: true,
+    sessionId: session.id,
+    question: buildFollowupQuestionView(questionMessage),
+    answer: result.answers[0] || null,
+    history: result.history,
+  };
+}
+
+function answerFollowupQuestionsBatch({ session, items, scenario }) {
+  const project = getProjectById(session.projectId);
+  const normalizedScenario = normalizeScenarioForStorage({
+    scenario,
+    operation: "answer",
+    project,
+  });
+  const answerMessages = items.map((item) => ({
+    id: createId("message"),
+    sessionId: session.id,
+    senderType: "user",
+    kind: "followup_answer",
+    round: item.questionMessage.round || 0,
+    questionStatus: null,
+    relatedMessageId: item.questionMessage.id,
+    scenarioSnapshot: normalizedScenario,
+    content: item.answer,
+    createdAt: nowIso(),
+  }));
+  store.messages.push(...answerMessages);
+  for (const item of items) {
+    item.questionMessage.questionStatus = "answered";
+  }
+
+  touchStore();
+  persistStore();
+
+  return {
+    ok: true,
+    sessionId: session.id,
+    answers: answerMessages.map((item) => ({
+      id: item.id,
+      content: item.content,
+      round: item.round || 0,
+      relatedMessageId: item.relatedMessageId,
+      createdAt: item.createdAt,
+      scenarioSnapshot: item.scenarioSnapshot || null,
+    })),
+    history: buildFollowupHistory(session.id),
+  };
+}
+
+function closeFollowupSessionOnSubmit({ followupSession, intakeSessionId, scenario, project }) {
+  const normalizedScenario = normalizeScenarioForStorage({
+    scenario,
+    operation: "submit",
+    project,
+  });
+  for (const message of store.messages) {
+    if (
+      message.sessionId === followupSession.id &&
+      message.kind === "followup_question" &&
+      message.questionStatus === "pending_answer"
+    ) {
+      message.questionStatus = "unanswered_on_submit";
+      if (!message.scenarioSnapshot) {
+        message.scenarioSnapshot = normalizedScenario;
+      }
+    }
+  }
+  followupSession.closedAt = nowIso();
+  followupSession.closedReason = "intake_submitted";
+  followupSession.linkedIntakeSessionId = intakeSessionId;
+}
+
+async function extractFollowupQuestions({
+  project,
+  note,
+  visitDate,
+  history,
+  minQuestions = 1,
+  maxQuestions = 3,
+}) {
+  const health = getResponsesApiHealth();
+  if (!health.configured) {
+    throw new Error(health.message);
+  }
+
+  const prompt = buildFollowupPrompt({ project, note, visitDate, history, minQuestions, maxQuestions });
+  const parsed = await runResponsesSchemaExtraction({
+    prompt,
+    schema: FOLLOWUP_QUESTIONS_RESPONSE_SCHEMA,
+    schemaName: "followup_questions",
+    instructions:
+      "Return only JSON. Produce 1 to 3 concise and answerable follow-up questions in the questions array.",
+  });
+  return normalizeFollowupQuestionsPayload(parsed, { minQuestions, maxQuestions });
+}
+
+function buildFollowupPrompt({ project, note, visitDate, history, minQuestions = 1, maxQuestions = 3 }) {
+  const hospital = getHospitalById(project.hospitalId);
+  const stage = getStageById(project.currentStageId);
+  const historyText = history.length
+    ? history
+        .map((item, index) => {
+          const answerText = item.answer?.content || "(未回答)";
+          return `${index + 1}. 问题：${item.question}\n   状态：${item.status}\n   回答：${answerText}`;
+        })
+        .join("\n")
+    : "暂无历史追问。";
+
+  return [
+    "你是医疗器械导入项目的追问助手。",
+    `请根据原始纪要和历史问答，输出 ${minQuestions}-${maxQuestions} 个最有价值的追问问题，帮助完善结构化抽取信息。`,
+    "每个问题都必须具体、可回答、与推进动作相关，不要泛泛而谈。",
+    `医院：${hospital.name}`,
+    `当前阶段：${stage.name}`,
+    `拜访日期：${visitDate}`,
+    "原始纪要：",
+    note,
+    "历史追问与回答：",
+    historyText,
+  ].join("\n");
+}
+
+function normalizeFollowupQuestionsPayload(raw, { minQuestions = 1, maxQuestions = 3 } = {}) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Responses API returned an invalid follow-up questions payload.");
+  }
+
+  const rawQuestions = Array.isArray(raw.questions) ? raw.questions : null;
+  if (!rawQuestions) {
+    throw new Error("Responses API returned follow-up questions without questions array.");
+  }
+  if (rawQuestions.length < minQuestions || rawQuestions.length > maxQuestions) {
+    throw new Error(
+      `Responses API returned ${rawQuestions.length} follow-up questions; expected ${minQuestions}-${maxQuestions}.`,
+    );
+  }
+
+  const questions = rawQuestions.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`Responses API returned invalid follow-up question item at index ${index}.`);
+    }
+    const question = clipText(asString(item.question), 180);
+    if (!question) {
+      throw new Error(`Responses API returned an empty follow-up question at index ${index}.`);
+    }
+    return {
+      question,
+      intent: clipText(asString(item.intent), 120),
+    };
+  });
+
+  return { questions };
+}
+
+function buildFollowupHistory(sessionId) {
+  const messages = store.messages
+    .filter((item) => item.sessionId === sessionId)
+    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt));
+  const answerByQuestionId = new Map(
+    messages
+      .filter((item) => item.kind === "followup_answer" && item.relatedMessageId)
+      .map((item) => [item.relatedMessageId, item]),
+  );
+
+  return messages
+    .filter((item) => item.kind === "followup_question")
+    .map((item) => ({
+      id: item.id,
+      round: Number(item.round) || 0,
+      question: item.content,
+      status: item.questionStatus || "pending_answer",
+      createdAt: item.createdAt,
+      scenarioSnapshot: item.scenarioSnapshot || null,
+      answer: answerByQuestionId.get(item.id)
+        ? {
+            id: answerByQuestionId.get(item.id).id,
+            content: answerByQuestionId.get(item.id).content,
+            createdAt: answerByQuestionId.get(item.id).createdAt,
+            scenarioSnapshot: answerByQuestionId.get(item.id).scenarioSnapshot || null,
+          }
+        : null,
+    }));
+}
+
+function buildFollowupQuestionView(message) {
+  return {
+    id: message.id,
+    round: Number(message.round) || 0,
+    question: message.content,
+    status: message.questionStatus || "pending_answer",
+    createdAt: message.createdAt,
+    scenarioSnapshot: message.scenarioSnapshot || null,
+  };
+}
+
+function findPendingFollowupQuestions(sessionId) {
+  return store.messages
+    .filter(
+      (item) =>
+        item.sessionId === sessionId &&
+        item.kind === "followup_question" &&
+        item.questionStatus === "pending_answer",
+    )
+    .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt));
+}
+
+function getFollowupSessionById(sessionId) {
+  const session = store.sessions.find((item) => item.id === sessionId);
+  return session && session.sessionType === "followup" ? session : null;
+}
+
+function parseScenarioPayload(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+  return input;
+}
+
+function normalizeScenarioForStorage({ scenario, operation, project }) {
+  const stage = project ? getStageById(project.currentStageId) : null;
+  return {
+    operation: asString(operation),
+    projectId: asString(scenario?.projectId) || project?.id || "",
+    currentStageId: asString(scenario?.currentStageId) || project?.currentStageId || "",
+    currentStageName: asString(scenario?.currentStageName) || stage?.name || "",
+    activeTab: asString(scenario?.activeTab) || "entry",
+    templateId: asString(scenario?.templateId),
+    recordedAt: asString(scenario?.recordedAt) || nowIso(),
+  };
+}
+
+async function processIntake({ project, note, visitDate, followupSession, submitScenario }) {
+  const extracted = await extractStructuredUpdate({ project, note, visitDate, followupSession });
   const currentUser = getCurrentUser();
   const departmentId = ensureDepartment(project.hospitalId, extracted.extraction.department);
   const stageBeforeId = project.currentStageId;
@@ -336,6 +1308,15 @@ async function processIntake({ project, note, visitDate }) {
     projectId: project.id,
     userId: currentUser.id,
     source: "web-intake",
+    sessionType: "intake",
+    scenario: normalizeScenarioForStorage({
+      scenario: submitScenario,
+      operation: "submit",
+      project,
+    }),
+    closedAt: null,
+    closedReason: "",
+    linkedIntakeSessionId: null,
     extractionSource: extracted.source,
     createdAt: nowIso(),
   };
@@ -346,6 +1327,15 @@ async function processIntake({ project, note, visitDate }) {
       id: createId("message"),
       sessionId: session.id,
       senderType: "user",
+      kind: "intake_note",
+      round: 0,
+      questionStatus: null,
+      relatedMessageId: null,
+      scenarioSnapshot: normalizeScenarioForStorage({
+        scenario: submitScenario,
+        operation: "submit",
+        project,
+      }),
       content: note,
       createdAt: nowIso(),
     },
@@ -353,6 +1343,15 @@ async function processIntake({ project, note, visitDate }) {
       id: createId("message"),
       sessionId: session.id,
       senderType: "assistant",
+      kind: "intake_extraction",
+      round: 0,
+      questionStatus: null,
+      relatedMessageId: null,
+      scenarioSnapshot: normalizeScenarioForStorage({
+        scenario: submitScenario,
+        operation: "submit",
+        project,
+      }),
       content: JSON.stringify(extracted.extraction),
       createdAt: nowIso(),
     },
@@ -417,6 +1416,15 @@ async function processIntake({ project, note, visitDate }) {
     stalledDays: calculateStalledDays(project.lastFollowUpAt),
   });
 
+  if (followupSession) {
+    closeFollowupSessionOnSubmit({
+      followupSession,
+      intakeSessionId: session.id,
+      scenario: submitScenario,
+      project,
+    });
+  }
+
   touchStore();
   persistStore();
 
@@ -432,13 +1440,14 @@ async function processIntake({ project, note, visitDate }) {
   };
 }
 
-async function extractStructuredUpdate({ project, note, visitDate }) {
+async function extractStructuredUpdate({ project, note, visitDate, followupSession = null }) {
   const health = getResponsesApiHealth();
   if (!health.configured) {
     throw new Error(health.message);
   }
 
-  const prompt = buildExtractionPrompt({ project, note, visitDate });
+  const followupContext = followupSession ? buildFollowupContextForExtraction(followupSession.id) : [];
+  const prompt = buildExtractionPrompt({ project, note, visitDate, followupContext });
   const parsed = await runResponsesStructuredExtraction(prompt);
   return {
     source: "responses-api",
@@ -447,7 +1456,7 @@ async function extractStructuredUpdate({ project, note, visitDate }) {
   };
 }
 
-function buildExtractionPrompt({ project, note, visitDate }) {
+function buildExtractionPrompt({ project, note, visitDate, followupContext = [] }) {
   const hospital = getHospitalById(project.hospitalId);
   const stage = getStageById(project.currentStageId);
   const issueNames = store.issueTags.map((item) => item.name).join("、");
@@ -469,10 +1478,41 @@ function buildExtractionPrompt({ project, note, visitDate }) {
     "不能判断的字段请返回空字符串、空数组或 false。",
     "原始记录：",
     note,
+    "追问补充信息：",
+    followupContext.length
+      ? followupContext
+          .map(
+            (item, index) =>
+              `${index + 1}. 问题：${item.question}\n   回答：${item.answer}\n   状态：${item.status}`,
+          )
+          .join("\n")
+      : "无",
   ].join("\n");
 }
 
+function buildFollowupContextForExtraction(sessionId) {
+  if (!sessionId) {
+    return [];
+  }
+  return buildFollowupHistory(sessionId)
+    .filter((item) => item.answer?.content)
+    .map((item) => ({
+      question: item.question,
+      answer: item.answer?.content || "",
+      status: item.status || "answered",
+    }));
+}
+
 async function runResponsesStructuredExtraction(prompt) {
+  return runResponsesSchemaExtraction({
+    prompt,
+    schema: INTAKE_RESPONSE_SCHEMA,
+    schemaName: "intake_extraction",
+    instructions: "Return only JSON that matches the provided schema.",
+  });
+}
+
+async function runResponsesSchemaExtraction({ prompt, schema, schemaName, instructions }) {
   const endpoint = `${responsesBaseUrl}/responses`;
   let response;
 
@@ -488,7 +1528,7 @@ async function runResponsesStructuredExtraction(prompt) {
         model: responsesModel,
         store: false,
         stream: true,
-        instructions: "Return only JSON that matches the provided schema.",
+        instructions: asString(instructions) || "Return only JSON that matches the provided schema.",
         input: [
           {
             role: "user",
@@ -498,9 +1538,9 @@ async function runResponsesStructuredExtraction(prompt) {
         text: {
           format: {
             type: "json_schema",
-            name: "intake_extraction",
+            name: asString(schemaName) || "structured_response",
             strict: true,
-            schema: INTAKE_RESPONSE_SCHEMA,
+            schema,
           },
         },
       }),
@@ -734,6 +1774,7 @@ function normalizeStoreShape(input) {
     projects: Array.isArray(input.projects) ? input.projects : [],
     updates: Array.isArray(input.updates) ? input.updates : [],
     tasks: Array.isArray(input.tasks) ? input.tasks : [],
+    remarks: Array.isArray(input.remarks) ? input.remarks : [],
     sessions: Array.isArray(input.sessions) ? input.sessions : [],
     messages: Array.isArray(input.messages) ? input.messages : [],
   };
@@ -777,6 +1818,10 @@ function getStageById(id) {
 
 function getUserById(id) {
   return store.users.find((item) => item.id === id);
+}
+
+function getRemarkById(id) {
+  return store.remarks.find((item) => item.id === id);
 }
 
 function nowIso() {
