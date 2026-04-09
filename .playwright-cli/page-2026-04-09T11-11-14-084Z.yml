@@ -1,0 +1,58 @@
+- generic [ref=e2]:
+  - banner [ref=e21]:
+    - generic [ref=e22]:
+      - strong [ref=e23]: 李伟
+      - generic [ref=e24]: 专员 · 华东
+    - button "退出登录" [ref=e25] [cursor=pointer]
+  - main [ref=e26]:
+    - article [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - paragraph [ref=e31]: Entry
+          - heading "纪要录入" [level=2] [ref=e32]
+        - paragraph [ref=e33]: 录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议。
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic [ref=e37]:
+              - generic [ref=e38]: 医院项目
+              - generic [ref=e39]:
+                - button "医院项目 查 杭州市第二人民医院 · 科室接触 当前阶段：科室接触 阶段由系统根据纪要自动更新" [ref=e40] [cursor=pointer]: +
+                - button "查" [ref=e41] [cursor=pointer]
+            - combobox [ref=e42]:
+              - option "杭州市第二人民医院 · 科室接触" [selected]
+              - option "上海市第一人民医院 · 试用评估"
+              - option "测试医院 · 目标建档"
+            - paragraph [ref=e43]:
+              - generic [ref=e44]:
+                - text: 当前阶段：
+                - strong [ref=e45]: 科室接触
+              - emphasis [ref=e46]: 阶段由系统根据纪要自动更新
+          - generic [ref=e47]:
+            - generic [ref=e48]: 拜访日期
+            - combobox "拜访日期" [ref=e49]:
+              - option "今天（默认）" [selected]
+              - option "昨天"
+              - option "前天"
+        - generic [ref=e50]:
+          - generic [ref=e51]: 原始推进记录
+          - textbox "原始推进记录" [ref=e52]:
+            - /placeholder: 请描述本次医院推进情况，例如：拜访科室、关键接触人、反馈意见、阻塞点、下一步计划及是否需要管理支持。
+        - generic [ref=e53]:
+          - paragraph [ref=e54]: 建议记录完整业务信息，以便系统准确生成项目更新与任务动作。
+          - generic [ref=e55]:
+            - button "历史信息" [ref=e56] [cursor=pointer]
+            - button "AI追问" [disabled] [ref=e57] [cursor=pointer]
+            - button "生成纪要" [ref=e58] [cursor=pointer]
+      - generic [ref=e60]:
+        - paragraph [ref=e61]: 本次结构化结果将在生成后展示于此。
+        - list [ref=e62]:
+          - listitem [ref=e63]: 系统将通过 Responses API 提取科室、联系人、问题标签、阶段变化和下一步动作
+          - listitem [ref=e64]: 如果接口未配置或抽取失败，生成或提交会直接返回错误信息
+          - listitem [ref=e65]: 提交完成后，项目台账、任务中心与管理汇总会同步刷新
+  - navigation "主导航" [ref=e66]:
+    - button "录入" [ref=e67] [cursor=pointer]
+    - button "信号" [ref=e68] [cursor=pointer]
+    - button "台账" [ref=e69] [cursor=pointer]
+    - button "任务" [ref=e70] [cursor=pointer]
+    - button "汇总" [ref=e71] [cursor=pointer]

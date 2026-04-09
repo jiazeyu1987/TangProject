@@ -1,0 +1,67 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner:
+      - generic:
+        - strong: 未登录
+        - generic: 请先登录后继续使用
+      - button "退出登录" [disabled]
+    - main:
+      - generic:
+        - article:
+          - generic:
+            - generic:
+              - paragraph: Entry
+              - heading "纪要录入" [level=2]
+            - paragraph: 录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议。
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic: 医院项目
+                  - generic:
+                    - button "医院项目 查 当前阶段：-- 阶段由系统根据纪要自动更新": +
+                    - button "查"
+                - combobox
+                - paragraph:
+                  - generic:
+                    - text: 当前阶段：
+                    - strong: "--"
+                  - emphasis: 阶段由系统根据纪要自动更新
+              - generic:
+                - generic: 拜访日期
+                - combobox "拜访日期":
+                  - option "今天（默认）" [selected]
+                  - option "昨天"
+                  - option "前天"
+            - generic:
+              - generic: 原始推进记录
+              - textbox "原始推进记录":
+                - /placeholder: 请描述本次医院推进情况，例如：拜访科室、关键接触人、反馈意见、阻塞点、下一步计划及是否需要管理支持。
+            - generic:
+              - paragraph: 建议记录完整业务信息，以便系统准确生成项目更新与任务动作。
+              - generic:
+                - button "历史信息"
+                - button "AI追问"
+                - button "生成纪要"
+    - navigation "主导航":
+      - button "录入"
+      - button "信号"
+      - button "台账"
+      - button "任务"
+      - button "汇总"
+  - dialog "账号登录" [ref=e4]:
+    - generic [ref=e5]:
+      - heading "账号登录" [level=3] [ref=e6]
+      - button "×" [ref=e7] [cursor=pointer]
+    - paragraph [ref=e8]: 请输入账号和密码登录系统。
+    - generic [ref=e9]:
+      - button "已有账号" [ref=e10] [cursor=pointer]
+      - button "新用户注册" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: 账号
+        - textbox "账号" [ref=e15]
+      - generic [ref=e16]:
+        - generic [ref=e17]: 密码
+        - textbox "密码" [ref=e18]
+      - button "立即登录" [ref=e20] [cursor=pointer]

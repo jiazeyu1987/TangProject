@@ -26,7 +26,7 @@ REQUIRED_PUBLIC_FILES = [
 ]
 REQUIRED_DATA_FILES = [
     "data/intake-schema.json",
-    "data/followup-question-schema.json",
+    "data/followup-questions-schema.json",
     "data/seed-store.json",
 ]
 

@@ -1,0 +1,43 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - strong [ref=e5]: 李伟
+      - generic [ref=e6]: 专员 · 华东
+    - button "退出登录" [ref=e7] [cursor=pointer]
+  - main [ref=e8]:
+    - article [ref=e129]:
+      - generic [ref=e130]:
+        - generic [ref=e131]:
+          - paragraph [ref=e132]: Insights
+          - heading "管理汇总" [level=2] [ref=e133]
+        - paragraph [ref=e134]: 按阶段分布、高频问题和最新动态汇总项目情况，支持管理判断与资源配置。
+      - generic [ref=e135]:
+        - tablist "汇总子导航" [ref=e168]:
+          - tab "管理汇总" [ref=e169] [cursor=pointer]
+          - tab "最近动态" [selected] [ref=e170] [cursor=pointer]
+          - tab "三级管理" [ref=e171] [cursor=pointer]
+        - generic [ref=e172]:
+          - heading "最近动态" [level=3] [ref=e173]
+          - paragraph [ref=e174]: 按最近纪要查看医院推进情况，可直接进入对应医院台账详情。
+          - article [ref=e175]:
+            - generic [ref=e176]:
+              - generic [ref=e177]:
+                - strong [ref=e178]: 疼痛科
+                - generic [ref=e179]: 上海市第一人民医院
+              - button "进入" [ref=e180] [cursor=pointer]
+            - paragraph [ref=e181]: 主任认可镇痛效果，希望先补一版收费测算，再决定扩大试用。
+            - generic [ref=e183]: 2026-04-02
+          - article [ref=e184]:
+            - generic [ref=e185]:
+              - generic [ref=e186]:
+                - strong [ref=e187]: 麻醉科
+                - generic [ref=e188]: 杭州市第二人民医院
+              - button "进入" [ref=e189] [cursor=pointer]
+            - paragraph [ref=e190]: 赵主任有兴趣，但明确要求先走完院内采购和成本论证。
+            - generic [ref=e192]: 2026-03-18
+  - navigation "主导航" [ref=e122]:
+    - button "录入" [ref=e123] [cursor=pointer]
+    - button "信号" [ref=e124] [cursor=pointer]
+    - button "台账" [ref=e125] [cursor=pointer]
+    - button "任务" [ref=e126] [cursor=pointer]
+    - button "汇总" [ref=e127] [cursor=pointer]

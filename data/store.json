@@ -2,7 +2,7 @@
   "meta": {
     "version": "0.1.0",
     "createdAt": "2026-04-05T09:00:00.000Z",
-    "updatedAt": "2026-04-08T15:45:31.921Z"
+    "updatedAt": "2026-04-09T11:11:09.864Z"
   },
   "currentUserId": "user-li-wei",
   "regions": [
@@ -21,26 +21,86 @@
     {
       "id": "user-li-wei",
       "name": "李伟",
-      "role": "field_staff",
-      "regionId": "region-east"
+      "role": "specialist",
+      "regionId": "region-east",
+      "account": "user-li-wei",
+      "passwordSalt": "738be754a0a5e6a2467e95a105cb8a0c",
+      "passwordHash": "e0c4937bbe4344117d75f6f24baa099be55f2c71eb2edbf3d341a8dfac7b4ebb75c9db716c84674d3a88ce442fe08fbf6123794b5b4aa41a90296596adc01087",
+      "createdAt": "2026-04-09T05:50:27.747Z"
     },
     {
       "id": "user-sun-min",
       "name": "孙敏",
-      "role": "field_staff",
-      "regionId": "region-east"
+      "role": "specialist",
+      "regionId": "region-east",
+      "account": "user-sun-min",
+      "passwordSalt": "5025d83f8ef9ee160bfb13556b7b1cea",
+      "passwordHash": "485374c4bfcd7001f3e9a5a51a4c6fee2f2162da49bf029a6ab3d80291cd7fc5d5e2bdae296354ab3bdd36f6cc92b37056dade3db064beda763340c29acc4413",
+      "createdAt": "2026-04-09T05:50:27.789Z"
     },
     {
       "id": "user-wang-chao",
       "name": "王超",
-      "role": "regional_manager",
-      "regionId": "region-east"
+      "role": "manager",
+      "regionId": "region-east",
+      "account": "user-wang-chao",
+      "passwordSalt": "615083ea95b212db799787930de45e10",
+      "passwordHash": "aa8ad99766599efe4d80a4b34cd2c88c4ab89313f903626ea1d1a785197f7ea7d4bc686f417331422bf813f61c860d0d10d19ed03cd1b0387740d27a12ecb6ba",
+      "createdAt": "2026-04-09T05:50:27.828Z"
     },
     {
       "id": "user-he-nan",
       "name": "何楠",
-      "role": "field_staff",
-      "regionId": "region-central"
+      "role": "specialist",
+      "regionId": "region-central",
+      "account": "user-he-nan",
+      "passwordSalt": "2fcb35eb6ecfcf7c8ad143cdab349ce3",
+      "passwordHash": "c3d12701d7b709bd1648f66a0d121a52b52cdca1b19bbeffd4ffc9c32bd24900bf0746ab455e94d49dfbf1efcf72b74312719ab3e2686473edc794a2a9eacee6",
+      "createdAt": "2026-04-09T05:50:27.866Z"
+    }
+  ],
+  "authSessions": [
+    {
+      "id": "auth-e24bea4b-3de8-41d5-9d22-68b92df4daad",
+      "userId": "user-li-wei",
+      "token": "788f3f40fab372c5dadbcd29f9550e21440fb535b3913b84",
+      "createdAt": "2026-04-09T06:00:42.770Z",
+      "lastUsedAt": "2026-04-09T06:00:42.770Z"
+    },
+    {
+      "id": "auth-78f87786-5cec-44d3-bb58-a0d9a78e3e21",
+      "userId": "user-li-wei",
+      "token": "087b896b717743c67beb2a64486e611b019c6737cb3805d9",
+      "createdAt": "2026-04-09T06:03:20.341Z",
+      "lastUsedAt": "2026-04-09T06:07:34.918Z"
+    },
+    {
+      "id": "auth-f8c71752-4128-4689-aa4c-1fe7afee3fef",
+      "userId": "user-li-wei",
+      "token": "66d8942a63708f7d0f137bac8a21527c7723d254a23879d2",
+      "createdAt": "2026-04-09T06:17:32.135Z",
+      "lastUsedAt": "2026-04-09T06:17:32.135Z"
+    },
+    {
+      "id": "auth-d7f4bdfa-6cc6-4ce2-a931-86d095c4085b",
+      "userId": "user-li-wei",
+      "token": "e2222bb39e99e92fa807336ed033559e9185272233fd2bf0",
+      "createdAt": "2026-04-09T06:23:37.462Z",
+      "lastUsedAt": "2026-04-09T06:31:58.237Z"
+    },
+    {
+      "id": "auth-9c58a941-386f-42ae-ae8d-0896b839b897",
+      "userId": "user-li-wei",
+      "token": "92ba64e731c79e7eb1b2432c0dc3f886eca69bf73dea3692",
+      "createdAt": "2026-04-09T06:54:47.674Z",
+      "lastUsedAt": "2026-04-09T06:59:25.173Z"
+    },
+    {
+      "id": "auth-65eb9a0a-9408-4279-a5fe-9f8462915766",
+      "userId": "user-li-wei",
+      "token": "df311686f8a0203d74c361a73e459cfbaba3cf29865c4ea9",
+      "createdAt": "2026-04-09T11:11:09.864Z",
+      "lastUsedAt": "2026-04-09T11:11:09.864Z"
     }
   ],
   "hospitals": [
@@ -64,6 +124,13 @@
       "name": "杭州市第二人民医院",
       "hospitalLevel": "三甲",
       "city": "杭州"
+    },
+    {
+      "id": "hospital-c947bdda-856f-41a2-9d02-65cf0a05c50e",
+      "regionId": "region-east",
+      "name": "测试医院",
+      "hospitalLevel": "未知",
+      "city": ""
     }
   ],
   "departments": [
@@ -238,6 +305,21 @@
         "issue-support"
       ],
       "latestUpdateId": "update-hz-1"
+    },
+    {
+      "id": "project-09e14b06-c976-4668-8be0-d1fbd0ac9aed",
+      "hospitalId": "hospital-c947bdda-856f-41a2-9d02-65cf0a05c50e",
+      "regionId": "region-east",
+      "ownerUserId": "user-li-wei",
+      "currentStageId": "stage-target",
+      "riskLevel": "normal",
+      "managerAttentionNeeded": false,
+      "lastFollowUpAt": "2026-04-09T06:31:58.238Z",
+      "nextAction": "",
+      "nextActionDueAt": null,
+      "latestSummary": "新建医院项目，待录入首次纪要。",
+      "currentIssueTagIds": [],
+      "latestUpdateId": null
     }
   ],
   "updates": [

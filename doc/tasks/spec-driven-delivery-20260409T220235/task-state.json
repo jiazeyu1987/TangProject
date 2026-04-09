@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "task_id": "spec-driven-delivery-20260409T220235",
+  "mode": "full",
+  "status": "planning",
+  "current_phase": null,
+  "phase_statuses": [],
+  "planner_review_status": "pending",
+  "test_status": "not_started",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-09T22:02:35",
+  "updated_at": "2026-04-09T22:02:35",
+  "branch": "main",
+  "baseline_revision": "a5cafc87e2af873f5ab35244f803523e18c5d62f",
+  "workspace_root": "D:\\ProjectPackage\\TangProject",
+  "tasks_root": "D:\\ProjectPackage\\TangProject\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\spec-driven-delivery-20260409T220235",
+  "goal": "根据参考图片调整纪要录入回复界面，新增或改造回复专用录入条目与历史时间线展示，按 spec-driven-delivery 流程交付",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\spec-driven-delivery-20260409T220235\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\spec-driven-delivery-20260409T220235\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\spec-driven-delivery-20260409T220235\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\spec-driven-delivery-20260409T220235\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\spec-driven-delivery-20260409T220235\\test-report.md"
+  }
+}

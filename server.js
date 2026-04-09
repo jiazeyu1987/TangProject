@@ -2,7 +2,10 @@ import crypto from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -18,10 +21,16 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 const SEED_STORE_PATH = path.join(DATA_DIR, "seed-store.json");
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const INTAKE_SCHEMA_PATH = path.join(DATA_DIR, "intake-schema.json");
 const FOLLOWUP_QUESTIONS_SCHEMA_PATH = path.join(DATA_DIR, "followup-questions-schema.json");
 const INTAKE_RESPONSE_SCHEMA = readJsonFile(INTAKE_SCHEMA_PATH);
 const FOLLOWUP_QUESTIONS_RESPONSE_SCHEMA = readJsonFile(FOLLOWUP_QUESTIONS_SCHEMA_PATH);
+const MAX_BACKUP_COUNT = 30;
+const DAILY_BACKUP_HOUR = 2;
+const DAILY_BACKUP_MINUTE = 0;
+const BACKUP_FILE_PREFIX = "store-backup-";
+const BACKUP_FILE_SUFFIX = ".json";
 
 const port = Number(process.env.PORT || 3000);
 const responsesBaseUrl = normalizeResponsesBaseUrl(
@@ -30,9 +39,25 @@ const responsesBaseUrl = normalizeResponsesBaseUrl(
 const responsesModel = process.env.RESPONSES_MODEL?.trim() || "gpt-5.4";
 const responsesApiKey = process.env.OPENAI_API_KEY?.trim() || "";
 const responsesTimeoutMs = toPositiveInteger(process.env.RESPONSES_TIMEOUT_MS, 120000);
-const SUPERVISOR_ROLES = new Set(["regional_manager", "district_manager", "director", "supervisor", "vp"]);
+const ROLE_DEFINITIONS = {
+  manager: { code: "manager", name: "经理", rank: 3 },
+  supervisor: { code: "supervisor", name: "主管", rank: 2 },
+  specialist: { code: "specialist", name: "专员", rank: 1 },
+};
+const SUPERVISOR_ROLES = new Set(["manager", "supervisor"]);
+const DEFAULT_INITIAL_PASSWORD = process.env.DEFAULT_INITIAL_PASSWORD?.trim() || "123456";
+const PASSWORD_PBKDF2_ITERATIONS = toPositiveInteger(process.env.PASSWORD_PBKDF2_ITERATIONS, 120000);
+const PASSWORD_PBKDF2_KEY_LENGTH = 64;
+const PASSWORD_PBKDF2_DIGEST = "sha512";
 
 let store = loadOrCreateStore();
+const backupSchedulerState = {
+  lastRunAt: "",
+  nextRunAt: "",
+  timer: null,
+  running: false,
+};
+initializeBackupSystem();
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -41,8 +66,254 @@ app.get("/api/health", (_req, res) => {
   res.json(buildHealthPayload());
 });
 
-app.get("/api/bootstrap", (_req, res) => {
-  res.json(buildBootstrapPayload());
+app.get("/api/auth/options", (_req, res) => {
+  res.json({
+    ok: true,
+    roles: Object.values(ROLE_DEFINITIONS).map((item) => ({
+      code: item.code,
+      name: item.name,
+      rank: item.rank,
+    })),
+    regions: [...store.regions],
+  });
+});
+
+app.post("/api/auth/register", (req, res) => {
+  const name = clipText(asString(req.body?.name), 40);
+  const account = normalizeAccount(req.body?.account);
+  const password = asString(req.body?.password);
+  const role = normalizeUserRole(asString(req.body?.role) || "specialist");
+  const regionId = asString(req.body?.regionId) || store.regions[0]?.id || "";
+
+  if (!name) {
+    res.status(400).json({ error: "name is required." });
+    return;
+  }
+  if (!account) {
+    res.status(400).json({ error: "account is required." });
+    return;
+  }
+  if (!isValidAccount(account)) {
+    res.status(400).json({ error: "account format is invalid." });
+    return;
+  }
+  if (!password || password.length < 6) {
+    res.status(400).json({ error: "password must be at least 6 characters." });
+    return;
+  }
+  if (!role) {
+    res.status(400).json({ error: "role is invalid." });
+    return;
+  }
+  if (!regionId || !getRegionById(regionId)) {
+    res.status(400).json({ error: "regionId is invalid." });
+    return;
+  }
+  if (store.users.some((item) => normalizeAccount(item.account) === account)) {
+    res.status(409).json({ error: "account already exists." });
+    return;
+  }
+
+  const passwordSalt = createPasswordSalt();
+  const user = {
+    id: createId("user"),
+    name,
+    account,
+    role,
+    regionId,
+    passwordSalt,
+    passwordHash: hashPassword(password, passwordSalt),
+    createdAt: nowIso(),
+  };
+  store.users.push(user);
+
+  const session = createAuthSession(user.id);
+  store.currentUserId = user.id;
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    token: session.token,
+    user: buildUserView(user),
+    bootstrap: buildBootstrapPayload(user),
+  });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const account = normalizeAccount(req.body?.account);
+  const password = asString(req.body?.password);
+  if (!account) {
+    res.status(400).json({ error: "account is required." });
+    return;
+  }
+  if (!password) {
+    res.status(400).json({ error: "password is required." });
+    return;
+  }
+
+  const user = store.users.find((item) => normalizeAccount(item.account) === account);
+  if (!user) {
+    res.status(401).json({ error: "account or password is incorrect." });
+    return;
+  }
+  if (!verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    res.status(401).json({ error: "account or password is incorrect." });
+    return;
+  }
+
+  const session = createAuthSession(user.id);
+  store.currentUserId = user.id;
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    token: session.token,
+    user: buildUserView(user),
+    bootstrap: buildBootstrapPayload(user),
+  });
+});
+
+app.use("/api", (req, res, next) => {
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Authentication required." });
+    return;
+  }
+
+  const session = store.authSessions.find((item) => item.token === token);
+  if (!session) {
+    res.status(401).json({ error: "Authentication token is invalid." });
+    return;
+  }
+  const user = getUserById(session.userId);
+  if (!user) {
+    res.status(401).json({ error: "Authenticated user no longer exists." });
+    return;
+  }
+
+  req.authToken = token;
+  req.authSession = session;
+  req.currentUser = user;
+  session.lastUsedAt = nowIso();
+  next();
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  const token = asString(req.authToken);
+  const before = store.authSessions.length;
+  store.authSessions = store.authSessions.filter((item) => item.token !== token);
+  if (store.currentUserId === req.currentUser?.id) {
+    store.currentUserId = "";
+  }
+  if (store.authSessions.length !== before) {
+    touchStore();
+    persistStore();
+  }
+  res.json({ ok: true });
+});
+
+app.get("/api/bootstrap", (req, res) => {
+  res.json(buildBootstrapPayload(req.currentUser));
+});
+
+app.get("/api/backups", (req, res) => {
+  if (!isManagerUser(req.currentUser)) {
+    res.status(403).json({ error: "Only managers can view backups." });
+    return;
+  }
+  try {
+    res.json(buildBackupPayload());
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list backups." });
+  }
+});
+
+app.post("/api/backups/create", (req, res) => {
+  if (!isManagerUser(req.currentUser)) {
+    res.status(403).json({ error: "Only managers can create backups." });
+    return;
+  }
+  try {
+    createStoreBackup("manual");
+    pruneBackups(MAX_BACKUP_COUNT);
+    res.json(buildBackupPayload());
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to create backup." });
+  }
+});
+
+app.post("/api/backups/restore", (req, res) => {
+  if (!isManagerUser(req.currentUser)) {
+    res.status(403).json({ error: "Only managers can restore backups." });
+    return;
+  }
+  const backupId = asString(req.body?.backupId);
+  if (!backupId) {
+    res.status(400).json({ error: "backupId is required." });
+    return;
+  }
+  try {
+    const restored = restoreStoreBackup(backupId);
+    res.json({
+      ok: true,
+      restored,
+      forcedLogout: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to restore backup.";
+    if (message === "Backup not found.") {
+      res.status(404).json({ error: message });
+      return;
+    }
+    if (
+      message === "backupId is invalid." ||
+      message === "Backup JSON is invalid." ||
+      message === "Backup store has no users."
+    ) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+app.patch("/api/users/:userId", (req, res) => {
+  if (!isManagerUser(req.currentUser)) {
+    res.status(403).json({ error: "Only managers can update users." });
+    return;
+  }
+  const userId = asString(req.params?.userId);
+  const regionId = asString(req.body?.regionId);
+  if (!userId) {
+    res.status(400).json({ error: "userId is required." });
+    return;
+  }
+  if (!regionId) {
+    res.status(400).json({ error: "regionId is required." });
+    return;
+  }
+  const region = getRegionById(regionId);
+  if (!region) {
+    res.status(400).json({ error: "regionId is invalid." });
+    return;
+  }
+  const user = getUserById(userId);
+  if (!user) {
+    res.status(404).json({ error: "User not found." });
+    return;
+  }
+
+  user.regionId = region.id;
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    user: buildUserView(user),
+    bootstrap: buildBootstrapPayload(req.currentUser),
+  });
 });
 
 app.patch("/api/tasks/:taskId", (req, res) => {
@@ -59,6 +330,15 @@ app.patch("/api/tasks/:taskId", (req, res) => {
     res.status(400).json({ error: "taskStatus is invalid." });
     return;
   }
+  const project = getProjectById(task.projectId);
+  if (!project) {
+    res.status(404).json({ error: "Project for task not found." });
+    return;
+  }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to update this task." });
+    return;
+  }
 
   task.status = taskStatus;
   task.completedAt = taskStatus === "completed" ? nowIso() : null;
@@ -68,7 +348,7 @@ app.patch("/api/tasks/:taskId", (req, res) => {
   res.json({
     ok: true,
     task: buildTaskView(task),
-    bootstrap: buildBootstrapPayload(),
+    bootstrap: buildBootstrapPayload(req.currentUser),
   });
 });
 
@@ -76,7 +356,7 @@ app.post("/api/projects", (req, res) => {
   const hospitalName = clipText(asString(req.body?.hospitalName), 120);
   const city = clipText(asString(req.body?.city), 40);
   const hospitalLevel = clipText(asString(req.body?.hospitalLevel), 20) || "未知";
-  const currentUser = getCurrentUser();
+  const currentUser = req.currentUser;
   const defaultStage = [...store.stages].sort((left, right) => left.sortOrder - right.sortOrder)[0];
   const regionId = asString(req.body?.regionId) || currentUser?.regionId || store.regions[0]?.id || "";
   const ownerUserId = asString(req.body?.ownerUserId) || currentUser?.id || store.users[0]?.id || "";
@@ -140,7 +420,7 @@ app.post("/api/projects", (req, res) => {
     ok: true,
     hospital,
     project: buildProjectView(project),
-    bootstrap: buildBootstrapPayload(),
+    bootstrap: buildBootstrapPayload(req.currentUser),
   });
 });
 
@@ -149,7 +429,7 @@ app.post("/api/projects/:projectId/remarks", (req, res) => {
   const content = clipText(asString(req.body?.content), 300);
   const toUserId = asString(req.body?.toUserId);
   const updateId = asString(req.body?.updateId);
-  const currentUser = getCurrentUser();
+  const currentUser = req.currentUser;
   const project = getProjectById(projectId);
 
   if (!projectId) {
@@ -164,8 +444,12 @@ app.post("/api/projects/:projectId/remarks", (req, res) => {
     res.status(400).json({ error: "Current user is invalid." });
     return;
   }
+  if (!canUserAccessProject(currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to leave remarks on this project." });
+    return;
+  }
   if (!SUPERVISOR_ROLES.has(asString(currentUser.role))) {
-    res.status(403).json({ error: "Only supervisors can leave project remarks." });
+    res.status(403).json({ error: "Only managers or supervisors can leave project remarks." });
     return;
   }
   if (!content) {
@@ -210,14 +494,14 @@ app.post("/api/projects/:projectId/remarks", (req, res) => {
     ok: true,
     remark: buildProjectRemarkView(remark),
     project: buildProjectView(project),
-    bootstrap: buildBootstrapPayload(),
+    bootstrap: buildBootstrapPayload(req.currentUser),
   });
 });
 
 app.post("/api/project-remarks/:remarkId/reply", (req, res) => {
   const remarkId = asString(req.params?.remarkId);
   const reply = clipText(asString(req.body?.reply), 300);
-  const currentUser = getCurrentUser();
+  const currentUser = req.currentUser;
   const remark = getRemarkById(remarkId);
 
   if (!remarkId) {
@@ -246,6 +530,10 @@ app.post("/api/project-remarks/:remarkId/reply", (req, res) => {
     res.status(404).json({ error: "Project for remark not found." });
     return;
   }
+  if (!canUserAccessProject(currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to reply this remark." });
+    return;
+  }
   if (currentUser.id !== remark.toUserId && currentUser.id !== project.ownerUserId) {
     res.status(403).json({ error: "Only the assignee can reply this remark." });
     return;
@@ -266,13 +554,13 @@ app.post("/api/project-remarks/:remarkId/reply", (req, res) => {
     ok: true,
     remark: buildProjectRemarkView(remark),
     project: buildProjectView(project),
-    bootstrap: buildBootstrapPayload(),
+    bootstrap: buildBootstrapPayload(req.currentUser),
   });
 });
 
 app.post("/api/project-remarks/:remarkId/read", (req, res) => {
   const remarkId = asString(req.params?.remarkId);
-  const currentUser = getCurrentUser();
+  const currentUser = req.currentUser;
   const remark = getRemarkById(remarkId);
 
   if (!remarkId) {
@@ -291,6 +579,10 @@ app.post("/api/project-remarks/:remarkId/read", (req, res) => {
   const project = getProjectById(remark.projectId);
   if (!project) {
     res.status(404).json({ error: "Project for remark not found." });
+    return;
+  }
+  if (!canUserAccessProject(currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to read this remark." });
     return;
   }
   const canRead =
@@ -314,7 +606,7 @@ app.post("/api/project-remarks/:remarkId/read", (req, res) => {
     ok: true,
     remark: buildProjectRemarkView(remark),
     project: buildProjectView(project),
-    bootstrap: buildBootstrapPayload(),
+    bootstrap: buildBootstrapPayload(req.currentUser),
   });
 });
 
@@ -323,6 +615,7 @@ app.post("/api/followups/question", async (req, res) => {
   const note = asString(req.body?.note);
   const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
   const sessionId = asString(req.body?.sessionId);
+  const historySessionId = asString(req.body?.historySessionId);
   const scenario = parseScenarioPayload(req.body?.scenario);
   const project = store.projects.find((item) => item.id === projectId);
 
@@ -342,6 +635,10 @@ app.post("/api/followups/question", async (req, res) => {
     res.status(404).json({ error: "Project not found." });
     return;
   }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to access this project." });
+    return;
+  }
 
   let followupSession;
   if (sessionId) {
@@ -358,8 +655,24 @@ app.post("/api/followups/question", async (req, res) => {
       res.status(400).json({ error: "Follow-up session has been closed." });
       return;
     }
+    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
+      res.status(403).json({ error: "Current user is not allowed to access this follow-up session." });
+      return;
+    }
   } else {
     followupSession = null;
+  }
+
+  if (historySessionId) {
+    const historySourceSession = getFollowupSessionById(historySessionId);
+    if (!historySourceSession) {
+      res.status(404).json({ error: "History follow-up session not found." });
+      return;
+    }
+    if (historySourceSession.projectId !== projectId) {
+      res.status(400).json({ error: "History follow-up session does not belong to the project." });
+      return;
+    }
   }
 
   try {
@@ -368,8 +681,10 @@ app.post("/api/followups/question", async (req, res) => {
       project,
       note,
       visitDate,
+      historySessionId: followupSession ? "" : historySessionId,
       scenario,
       source: "web-followup",
+      currentUser: req.currentUser,
       minQuestions: 1,
       maxQuestions: 1,
     });
@@ -391,6 +706,7 @@ app.post("/api/followups/questions", async (req, res) => {
   const note = asString(req.body?.note);
   const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
   const sessionId = asString(req.body?.sessionId);
+  const historySessionId = asString(req.body?.historySessionId);
   const scenario = parseScenarioPayload(req.body?.scenario);
   const project = store.projects.find((item) => item.id === projectId);
 
@@ -410,6 +726,10 @@ app.post("/api/followups/questions", async (req, res) => {
     res.status(404).json({ error: "Project not found." });
     return;
   }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to access this project." });
+    return;
+  }
 
   let followupSession;
   if (sessionId) {
@@ -426,8 +746,24 @@ app.post("/api/followups/questions", async (req, res) => {
       res.status(400).json({ error: "Follow-up session has been closed." });
       return;
     }
+    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
+      res.status(403).json({ error: "Current user is not allowed to access this follow-up session." });
+      return;
+    }
   } else {
     followupSession = null;
+  }
+
+  if (historySessionId) {
+    const historySourceSession = getFollowupSessionById(historySessionId);
+    if (!historySourceSession) {
+      res.status(404).json({ error: "History follow-up session not found." });
+      return;
+    }
+    if (historySourceSession.projectId !== projectId) {
+      res.status(400).json({ error: "History follow-up session does not belong to the project." });
+      return;
+    }
   }
 
   try {
@@ -436,10 +772,12 @@ app.post("/api/followups/questions", async (req, res) => {
       project,
       note,
       visitDate,
+      historySessionId: followupSession ? "" : historySessionId,
       scenario,
       source: "web-followup",
+      currentUser: req.currentUser,
       minQuestions: 1,
-      maxQuestions: 3,
+      maxQuestions: 1,
     });
     res.json(result);
   } catch (error) {
@@ -447,6 +785,39 @@ app.post("/api/followups/questions", async (req, res) => {
       error: error instanceof Error ? error.message : "Failed to generate follow-up question.",
     });
   }
+});
+
+app.get("/api/followups/history", (req, res) => {
+  const projectId = asString(req.query?.projectId);
+  const limitRaw = Number.parseInt(asString(req.query?.limit), 10);
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 50;
+
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required." });
+    return;
+  }
+  const project = getProjectById(projectId);
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to access this project." });
+    return;
+  }
+
+  const sessions = store.sessions
+    .filter((item) => item.sessionType === "followup" && item.projectId === projectId)
+    .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt))
+    .slice(0, limit)
+    .map((item) => buildFollowupHistorySessionView(item));
+
+  res.json({
+    ok: true,
+    projectId,
+    generatedAt: nowIso(),
+    sessions,
+  });
 });
 
 app.post("/api/followups/answer", (req, res) => {
@@ -481,6 +852,15 @@ app.post("/api/followups/answer", (req, res) => {
     res.status(400).json({ error: "Follow-up session has been closed." });
     return;
   }
+  if (session.userId && session.userId !== req.currentUser.id) {
+    res.status(403).json({ error: "Current user is not allowed to answer this follow-up session." });
+    return;
+  }
+  const followupProject = getProjectById(session.projectId);
+  if (!followupProject || !canUserAccessProject(req.currentUser, followupProject)) {
+    res.status(403).json({ error: "Current user is not allowed to access this follow-up project." });
+    return;
+  }
 
   const questionMessage = store.messages.find(
     (item) =>
@@ -502,6 +882,7 @@ app.post("/api/followups/answer", (req, res) => {
     questionMessage,
     answer,
     scenario,
+    actorUser: req.currentUser,
   });
   res.json(result);
 });
@@ -531,6 +912,15 @@ app.post("/api/followups/answers", (req, res) => {
   }
   if (session.closedAt) {
     res.status(400).json({ error: "Follow-up session has been closed." });
+    return;
+  }
+  if (session.userId && session.userId !== req.currentUser.id) {
+    res.status(403).json({ error: "Current user is not allowed to answer this follow-up session." });
+    return;
+  }
+  const followupProject = getProjectById(session.projectId);
+  if (!followupProject || !canUserAccessProject(req.currentUser, followupProject)) {
+    res.status(403).json({ error: "Current user is not allowed to access this follow-up project." });
     return;
   }
 
@@ -579,6 +969,7 @@ app.post("/api/followups/answers", (req, res) => {
     session,
     items,
     scenario,
+    actorUser: req.currentUser,
   });
   res.json(result);
 });
@@ -605,6 +996,10 @@ app.post("/api/intake", async (req, res) => {
     res.status(404).json({ error: "Project not found." });
     return;
   }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to submit intake for this project." });
+    return;
+  }
 
   let followupSession = null;
   if (followupSessionId) {
@@ -621,10 +1016,21 @@ app.post("/api/intake", async (req, res) => {
       res.status(400).json({ error: "Follow-up session has been closed." });
       return;
     }
+    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
+      res.status(403).json({ error: "Current user is not allowed to submit this follow-up session." });
+      return;
+    }
   }
 
   try {
-    const result = await processIntake({ project, note, visitDate, followupSession, submitScenario });
+    const result = await processIntake({
+      project,
+      note,
+      visitDate,
+      followupSession,
+      submitScenario,
+      currentUser: req.currentUser,
+    });
     res.json(result);
   } catch (error) {
     res.status(500).json({
@@ -652,6 +1058,10 @@ app.post("/api/intake/preview", async (req, res) => {
     res.status(404).json({ error: "Project not found." });
     return;
   }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to preview intake for this project." });
+    return;
+  }
 
   let followupSession = null;
   if (followupSessionId) {
@@ -666,6 +1076,10 @@ app.post("/api/intake/preview", async (req, res) => {
     }
     if (followupSession.closedAt) {
       res.status(400).json({ error: "Follow-up session has been closed." });
+      return;
+    }
+    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
+      res.status(403).json({ error: "Current user is not allowed to preview with this follow-up session." });
       return;
     }
   }
@@ -686,21 +1100,29 @@ app.post("/api/intake/preview", async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", "no-store");
+    },
+  }),
+);
 
 app.listen(port, () => {
   console.log(`AI clinical rollout MVP running at http://localhost:${port}`);
 });
 
-function buildBootstrapPayload() {
-  const projects = buildProjectViews();
-  const tasks = buildTaskViews();
+function buildBootstrapPayload(currentUser = null) {
+  const resolvedCurrentUser = currentUser || getCurrentUser();
+  const visibleProjectIds = collectVisibleProjectIds(resolvedCurrentUser);
+  const projects = buildProjectViews(resolvedCurrentUser, visibleProjectIds);
+  const tasks = buildTaskViews(resolvedCurrentUser, visibleProjectIds);
 
   return {
     ok: true,
     generatedAt: nowIso(),
     health: buildHealthPayload(),
-    currentUser: buildUserView(getCurrentUser()),
+    currentUser: buildUserView(resolvedCurrentUser),
     lookups: {
       stages: [...store.stages].sort((left, right) => left.sortOrder - right.sortOrder),
       issueTags: store.issueTags,
@@ -708,7 +1130,8 @@ function buildBootstrapPayload() {
       regions: store.regions,
     },
     dashboard: buildDashboard(projects, tasks),
-    signals: buildSignals(projects, tasks),
+    signals: buildSignals(projects, tasks, visibleProjectIds),
+    management: buildManagementPayload(resolvedCurrentUser),
     projects,
     tasks,
   };
@@ -728,7 +1151,186 @@ function buildHealthPayload() {
       projectCount: store.projects.length,
       taskCount: store.tasks.length,
     },
+    backup: {
+      path: BACKUP_DIR,
+      maxCount: MAX_BACKUP_COUNT,
+      scheduledAt: `${String(DAILY_BACKUP_HOUR).padStart(2, "0")}:${String(DAILY_BACKUP_MINUTE).padStart(2, "0")}`,
+      lastRunAt: backupSchedulerState.lastRunAt || null,
+      nextRunAt: backupSchedulerState.nextRunAt || null,
+    },
   };
+}
+
+function buildBackupPayload() {
+  return {
+    ok: true,
+    generatedAt: nowIso(),
+    policy: {
+      maxBackups: MAX_BACKUP_COUNT,
+      schedule: {
+        hour: DAILY_BACKUP_HOUR,
+        minute: DAILY_BACKUP_MINUTE,
+      },
+    },
+    scheduler: {
+      running: backupSchedulerState.running,
+      lastRunAt: backupSchedulerState.lastRunAt || null,
+      nextRunAt: backupSchedulerState.nextRunAt || null,
+    },
+    backups: listStoreBackups(),
+  };
+}
+
+function initializeBackupSystem() {
+  mkdirSync(BACKUP_DIR, { recursive: true });
+  pruneBackups(MAX_BACKUP_COUNT);
+  scheduleNextBackupRun(new Date());
+}
+
+function scheduleNextBackupRun(referenceDate) {
+  const nextRunAt = resolveNextDailyRunAt(referenceDate, DAILY_BACKUP_HOUR, DAILY_BACKUP_MINUTE);
+  backupSchedulerState.nextRunAt = nextRunAt.toISOString();
+  if (backupSchedulerState.timer) {
+    clearTimeout(backupSchedulerState.timer);
+  }
+  const delayMs = Math.max(1000, nextRunAt.getTime() - Date.now());
+  backupSchedulerState.timer = setTimeout(() => {
+    runScheduledBackup();
+  }, delayMs);
+}
+
+function runScheduledBackup() {
+  backupSchedulerState.running = true;
+  try {
+    createStoreBackup("auto");
+    pruneBackups(MAX_BACKUP_COUNT);
+    backupSchedulerState.lastRunAt = nowIso();
+  } catch (error) {
+    console.error("[backup] scheduled backup failed:", error instanceof Error ? error.message : error);
+  } finally {
+    backupSchedulerState.running = false;
+    scheduleNextBackupRun(new Date(Date.now() + 1000));
+  }
+}
+
+function resolveNextDailyRunAt(referenceDate, hour, minute) {
+  const reference = referenceDate instanceof Date ? referenceDate : new Date();
+  const next = new Date(reference.getTime());
+  next.setHours(hour, minute, 0, 0);
+  if (next.getTime() <= reference.getTime()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
+function createStoreBackup(trigger) {
+  const normalizedTrigger = asString(trigger).toLowerCase();
+  if (!normalizedTrigger || (normalizedTrigger !== "auto" && normalizedTrigger !== "manual")) {
+    throw new Error("backup trigger is invalid.");
+  }
+  mkdirSync(BACKUP_DIR, { recursive: true });
+  const timestamp = nowIso().replace(/[-:.]/g, "");
+  const backupId = `${BACKUP_FILE_PREFIX}${timestamp}-${createId("backup")}-${normalizedTrigger}${BACKUP_FILE_SUFFIX}`;
+  const backupPath = path.join(BACKUP_DIR, backupId);
+  writeFileSync(backupPath, JSON.stringify(store, null, 2), "utf8");
+  const stat = statSync(backupPath);
+  return buildBackupItem(backupId, stat);
+}
+
+function listStoreBackups() {
+  mkdirSync(BACKUP_DIR, { recursive: true });
+  return listBackupFileNames()
+    .map((fileName) => {
+      const fullPath = path.join(BACKUP_DIR, fileName);
+      try {
+        const stat = statSync(fullPath);
+        return buildBackupItem(fileName, stat);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt));
+}
+
+function pruneBackups(maxCount) {
+  const limit = Number(maxCount) > 0 ? Number(maxCount) : MAX_BACKUP_COUNT;
+  const backups = listStoreBackups();
+  if (backups.length <= limit) {
+    return backups;
+  }
+  const overflowItems = backups.slice(limit);
+  for (const item of overflowItems) {
+    unlinkSync(path.join(BACKUP_DIR, item.fileName));
+  }
+  return listStoreBackups();
+}
+
+function restoreStoreBackup(backupId) {
+  const backupPath = resolveBackupFilePath(backupId);
+  if (!backupPath) {
+    throw new Error("backupId is invalid.");
+  }
+  if (!existsSync(backupPath)) {
+    throw new Error("Backup not found.");
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(backupPath, "utf8"));
+  } catch {
+    throw new Error("Backup JSON is invalid.");
+  }
+
+  const normalized = normalizeStoreShape(parsed);
+  if (!Array.isArray(normalized.users) || !normalized.users.length) {
+    throw new Error("Backup store has no users.");
+  }
+  const clearedSessionCount = Array.isArray(normalized.authSessions) ? normalized.authSessions.length : 0;
+  normalized.authSessions = [];
+  store = normalized;
+  touchStore();
+  persistStore();
+  return {
+    backupId,
+    restoredAt: nowIso(),
+    clearedSessionCount,
+  };
+}
+
+function listBackupFileNames() {
+  if (!existsSync(BACKUP_DIR)) {
+    return [];
+  }
+  return readdirSync(BACKUP_DIR).filter(
+    (fileName) => fileName.startsWith(BACKUP_FILE_PREFIX) && fileName.endsWith(BACKUP_FILE_SUFFIX),
+  );
+}
+
+function buildBackupItem(fileName, stat) {
+  return {
+    id: fileName,
+    fileName,
+    trigger: resolveBackupTrigger(fileName),
+    createdAt: new Date(stat.mtimeMs).toISOString(),
+    sizeBytes: Number(stat.size) || 0,
+  };
+}
+
+function resolveBackupTrigger(fileName) {
+  const match = String(fileName || "").match(/-(auto|manual)\.json$/);
+  return match ? match[1] : "manual";
+}
+
+function resolveBackupFilePath(backupId) {
+  const normalized = asString(backupId);
+  if (!normalized || normalized.includes("/") || normalized.includes("\\") || normalized.includes("..")) {
+    return "";
+  }
+  if (!normalized.startsWith(BACKUP_FILE_PREFIX) || !normalized.endsWith(BACKUP_FILE_SUFFIX)) {
+    return "";
+  }
+  return path.join(BACKUP_DIR, normalized);
 }
 
 function buildDashboard(projects, tasks) {
@@ -753,20 +1355,86 @@ function buildDashboard(projects, tasks) {
   };
 }
 
-function buildSignals(projects, tasks) {
+function buildSignals(projects, tasks, visibleProjectIds) {
   return {
     attentionProjects: projects.filter((project) => project.managerAttentionNeeded).slice(0, 4),
     stalledProjects: projects.filter((project) => project.isStalled).slice(0, 4),
     overdueTasks: tasks.filter((task) => task.overdue).slice(0, 4),
     recentUpdates: [...store.updates]
+      .filter((update) => visibleProjectIds.has(update.projectId))
       .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt))
       .slice(0, 5)
       .map((update) => buildUpdateView(update)),
   };
 }
 
-function buildProjectViews() {
-  return [...store.projects].map((project) => buildProjectView(project)).sort(compareProjectViews);
+function canUserAccessProject(currentUser, project) {
+  if (!currentUser || !project) {
+    return false;
+  }
+  const role = normalizeUserRole(currentUser.role);
+  if (role === "manager") {
+    return true;
+  }
+  if (role === "supervisor") {
+    return project.regionId === currentUser.regionId;
+  }
+  return project.ownerUserId === currentUser.id;
+}
+
+function isManagerUser(user) {
+  return normalizeUserRole(asString(user?.role)) === "manager";
+}
+
+function buildManagementPayload(currentUser) {
+  const roleCounts = Object.keys(ROLE_DEFINITIONS).map((code) => ({
+    code,
+    name: ROLE_DEFINITIONS[code].name,
+    rank: ROLE_DEFINITIONS[code].rank,
+    count: store.users.filter((item) => normalizeUserRole(item.role) === code).length,
+  }));
+  const allUsers = [...store.users]
+    .map((item) => buildUserView(item))
+    .filter(Boolean)
+    .sort((left, right) => {
+      const roleRankDelta =
+        (ROLE_DEFINITIONS[right.role]?.rank || 0) - (ROLE_DEFINITIONS[left.role]?.rank || 0);
+      if (roleRankDelta) {
+        return roleRankDelta;
+      }
+      return left.name.localeCompare(right.name, "zh-CN");
+    });
+  const role = normalizeUserRole(currentUser?.role);
+  let visibleUsers = [];
+  if (role === "manager") {
+    visibleUsers = allUsers;
+  } else if (role === "supervisor") {
+    visibleUsers = allUsers.filter(
+      (item) => item.role !== "manager" && item.regionId === asString(currentUser?.regionId),
+    );
+  } else if (currentUser?.id) {
+    visibleUsers = allUsers.filter((item) => item.id === currentUser.id);
+  }
+  return {
+    levels: roleCounts,
+    visibleUsers,
+    canManageUsers: role === "manager",
+  };
+}
+
+function collectVisibleProjectIds(currentUser) {
+  return new Set(
+    store.projects
+      .filter((project) => canUserAccessProject(currentUser, project))
+      .map((project) => project.id),
+  );
+}
+
+function buildProjectViews(currentUser, visibleProjectIds = collectVisibleProjectIds(currentUser)) {
+  return [...store.projects]
+    .filter((project) => visibleProjectIds.has(project.id))
+    .map((project) => buildProjectView(project))
+    .sort(compareProjectViews);
 }
 
 function buildProjectView(project) {
@@ -835,8 +1503,11 @@ function buildProjectView(project) {
   };
 }
 
-function buildTaskViews() {
-  return [...store.tasks].map((task) => buildTaskView(task)).sort(compareTaskViews);
+function buildTaskViews(currentUser, visibleProjectIds = collectVisibleProjectIds(currentUser)) {
+  return [...store.tasks]
+    .filter((task) => visibleProjectIds.has(task.projectId))
+    .map((task) => buildTaskView(task))
+    .sort(compareTaskViews);
 }
 function buildTaskView(task) {
   const project = getProjectById(task.projectId);
@@ -861,9 +1532,13 @@ function buildTaskView(task) {
 }
 
 function buildUpdateView(update) {
+  const project = getProjectById(update.projectId);
+  const hospital = project ? getHospitalById(project.hospitalId) : null;
+
   return {
     id: update.id,
     projectId: update.projectId,
+    hospitalName: hospital?.name || "",
     visitDate: update.visitDate,
     createdAt: update.createdAt,
     createdByName: getUserById(update.createdByUserId)?.name || "未知用户",
@@ -895,11 +1570,16 @@ function buildUserView(user) {
   if (!user) {
     return null;
   }
+  const role = normalizeUserRole(user.role);
+  const roleMeta = ROLE_DEFINITIONS[role];
 
   return {
     id: user.id,
     name: user.name,
-    role: user.role,
+    account: user.account || "",
+    role,
+    roleName: roleMeta?.name || role,
+    regionId: user.regionId || "",
     regionName: getRegionById(user.regionId)?.name || "",
   };
 }
@@ -932,8 +1612,15 @@ function buildProjectRemarkView(remark) {
   };
 }
 
-function createFollowupSession({ project, note, visitDate, scenario, source }) {
-  const currentUser = getCurrentUser();
+function createFollowupSession({
+  project,
+  note,
+  visitDate,
+  scenario,
+  source,
+  currentUser,
+  historySourceSessionId = "",
+}) {
   const normalizedScenario = normalizeScenarioForStorage({
     scenario,
     operation: "generate",
@@ -948,6 +1635,7 @@ function createFollowupSession({ project, note, visitDate, scenario, source }) {
     sessionType: "followup",
     scenario: normalizedScenario,
     visitDate,
+    historySourceSessionId: asString(historySourceSessionId) || null,
     closedAt: null,
     closedReason: "",
     linkedIntakeSessionId: null,
@@ -976,8 +1664,10 @@ async function createFollowupQuestions({
   project,
   note,
   visitDate,
+  historySessionId = "",
   scenario,
   source,
+  currentUser,
   minQuestions = 1,
   maxQuestions = 3,
 }) {
@@ -986,7 +1676,8 @@ async function createFollowupQuestions({
     operation: "generate",
     project,
   });
-  const history = session ? buildFollowupHistory(session.id) : [];
+  const historyContextSessionId = session ? session.id : asString(historySessionId);
+  const history = historyContextSessionId ? buildFollowupHistory(historyContextSessionId) : [];
   const pendingQuestions = session ? findPendingFollowupQuestions(session.id) : [];
   const extracted = await extractFollowupQuestions({
     project,
@@ -1005,6 +1696,8 @@ async function createFollowupQuestions({
       visitDate,
       scenario,
       source,
+      currentUser,
+      historySourceSessionId: historySessionId,
     });
 
   for (const pendingQuestion of pendingQuestions) {
@@ -1044,11 +1737,12 @@ async function createFollowupQuestions({
   };
 }
 
-function answerFollowupQuestion({ session, questionMessage, answer, scenario }) {
+function answerFollowupQuestion({ session, questionMessage, answer, scenario, actorUser = null }) {
   const result = answerFollowupQuestionsBatch({
     session,
     items: [{ questionMessage, answer }],
     scenario,
+    actorUser,
   });
   return {
     ok: true,
@@ -1059,8 +1753,11 @@ function answerFollowupQuestion({ session, questionMessage, answer, scenario }) 
   };
 }
 
-function answerFollowupQuestionsBatch({ session, items, scenario }) {
+function answerFollowupQuestionsBatch({ session, items, scenario, actorUser = null }) {
   const project = getProjectById(session.projectId);
+  const submittedByUserId = asString(actorUser?.id) || asString(session.userId);
+  const submittedByUser = getUserById(submittedByUserId);
+  const submittedByUserName = asString(actorUser?.name) || submittedByUser?.name || "";
   const normalizedScenario = normalizeScenarioForStorage({
     scenario,
     operation: "answer",
@@ -1075,6 +1772,9 @@ function answerFollowupQuestionsBatch({ session, items, scenario }) {
     questionStatus: null,
     relatedMessageId: item.questionMessage.id,
     scenarioSnapshot: normalizedScenario,
+    userId: submittedByUserId,
+    submittedByUserId,
+    submittedByUserName,
     content: item.answer,
     createdAt: nowIso(),
   }));
@@ -1095,6 +1795,8 @@ function answerFollowupQuestionsBatch({ session, items, scenario }) {
       round: item.round || 0,
       relatedMessageId: item.relatedMessageId,
       createdAt: item.createdAt,
+      submittedByUserId: item.submittedByUserId || "",
+      submittedByUserName: item.submittedByUserName || "",
       scenarioSnapshot: item.scenarioSnapshot || null,
     })),
     history: buildFollowupHistory(session.id),
@@ -1206,6 +1908,68 @@ function normalizeFollowupQuestionsPayload(raw, { minQuestions = 1, maxQuestions
   return { questions };
 }
 
+function buildFollowupHistorySessionView(session) {
+  const sessionUser = getUserById(session.userId);
+  const seedMessage = store.messages
+    .filter((item) => item.sessionId === session.id && item.kind === "followup_seed")
+    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt))[0];
+  return {
+    sessionId: session.id,
+    projectId: session.projectId,
+    source: session.source || "",
+    userId: session.userId || "",
+    userName: sessionUser?.name || "",
+    createdAt: session.createdAt,
+    closedAt: session.closedAt || null,
+    closedReason: session.closedReason || "",
+    linkedIntakeSessionId: session.linkedIntakeSessionId || null,
+    historySourceSessionId: session.historySourceSessionId || null,
+    scenario: session.scenario || null,
+    seedNote: seedMessage?.content || "",
+    history: buildFollowupHistoryDetailed(session.id, session),
+  };
+}
+
+function buildFollowupHistoryDetailed(sessionId, session = null) {
+  const messages = store.messages
+    .filter((item) => item.sessionId === sessionId)
+    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt));
+  const answerByQuestionId = new Map(
+    messages
+      .filter((item) => item.kind === "followup_answer" && item.relatedMessageId)
+      .map((item) => [item.relatedMessageId, item]),
+  );
+  return messages
+    .filter((item) => item.kind === "followup_question")
+    .map((item) => {
+      const answerMessage = answerByQuestionId.get(item.id);
+      const submittedByUserId =
+        asString(answerMessage?.submittedByUserId) ||
+        asString(answerMessage?.userId) ||
+        asString(session?.userId);
+      const submittedByUser = getUserById(submittedByUserId);
+      return {
+        id: item.id,
+        round: Number(item.round) || 0,
+        question: item.content,
+        status: item.questionStatus || "pending_answer",
+        createdAt: item.createdAt,
+        scenarioSnapshot: item.scenarioSnapshot || null,
+        answer: answerMessage
+          ? {
+              id: answerMessage.id,
+              content: answerMessage.content,
+              createdAt: answerMessage.createdAt,
+              submittedByUserId,
+              submittedByUserName:
+                asString(answerMessage.submittedByUserName) || submittedByUser?.name || "",
+              submitScenario: answerMessage.scenarioSnapshot || null,
+            }
+          : null,
+      };
+    });
+}
+
 function buildFollowupHistory(sessionId) {
   const messages = store.messages
     .filter((item) => item.sessionId === sessionId)
@@ -1283,9 +2047,8 @@ function normalizeScenarioForStorage({ scenario, operation, project }) {
   };
 }
 
-async function processIntake({ project, note, visitDate, followupSession, submitScenario }) {
+async function processIntake({ project, note, visitDate, followupSession, submitScenario, currentUser }) {
   const extracted = await extractStructuredUpdate({ project, note, visitDate, followupSession });
-  const currentUser = getCurrentUser();
   const departmentId = ensureDepartment(project.hospitalId, extracted.extraction.department);
   const stageBeforeId = project.currentStageId;
   const stageAfterId = resolveStageId(extracted.extraction.stageAfterUpdate);
@@ -1436,7 +2199,7 @@ async function processIntake({ project, note, visitDate, followupSession, submit
     update: buildUpdateView(update),
     createdTasks: createdTasks.map((task) => buildTaskView(task)),
     project: buildProjectView(project),
-    bootstrap: buildBootstrapPayload(),
+    bootstrap: buildBootstrapPayload(currentUser),
   };
 }
 
@@ -1761,11 +2524,23 @@ function loadOrCreateStore() {
 }
 
 function normalizeStoreShape(input) {
+  const normalizedUsers = normalizeUsers(Array.isArray(input.users) ? input.users : []);
+  const userIds = new Set(normalizedUsers.map((item) => item.id));
+  const normalizedAuthSessions = normalizeAuthSessions(
+    Array.isArray(input.authSessions) ? input.authSessions : [],
+    userIds,
+  );
+  const currentUserId =
+    asString(input.currentUserId) && userIds.has(asString(input.currentUserId))
+      ? asString(input.currentUserId)
+      : normalizedUsers[0]?.id || "";
+
   return {
     meta: input.meta || { version: "0.1.0", createdAt: nowIso(), updatedAt: nowIso() },
-    currentUserId: input.currentUserId || "",
+    currentUserId,
     regions: Array.isArray(input.regions) ? input.regions : [],
-    users: Array.isArray(input.users) ? input.users : [],
+    users: normalizedUsers,
+    authSessions: normalizedAuthSessions,
     hospitals: Array.isArray(input.hospitals) ? input.hospitals : [],
     departments: Array.isArray(input.departments) ? input.departments : [],
     contacts: Array.isArray(input.contacts) ? input.contacts : [],
@@ -1778,6 +2553,58 @@ function normalizeStoreShape(input) {
     sessions: Array.isArray(input.sessions) ? input.sessions : [],
     messages: Array.isArray(input.messages) ? input.messages : [],
   };
+}
+
+function normalizeUsers(users) {
+  const usedAccounts = new Set();
+  return users.map((user, index) => normalizeUserRecord(user, index, usedAccounts));
+}
+
+function normalizeUserRecord(user, index, usedAccounts) {
+  const normalizedRole = normalizeUserRole(asString(user?.role));
+  if (!normalizedRole) {
+    throw new Error(`Unsupported user role in data store: ${asString(user?.role) || "(empty)"}.`);
+  }
+  const baseName = clipText(asString(user?.name), 40) || `用户${index + 1}`;
+  const account = toUniqueAccount(normalizeAccount(user?.account) || normalizeAccount(user?.id), usedAccounts);
+  const passwordSalt = asString(user?.passwordSalt) || createPasswordSalt();
+  const passwordHash =
+    asString(user?.passwordHash) || hashPassword(DEFAULT_INITIAL_PASSWORD, passwordSalt);
+
+  return {
+    id: asString(user?.id) || createId("user"),
+    name: baseName,
+    role: normalizedRole,
+    regionId: asString(user?.regionId),
+    account,
+    passwordSalt,
+    passwordHash,
+    createdAt: asString(user?.createdAt) || nowIso(),
+  };
+}
+
+function normalizeAuthSessions(authSessions, userIds) {
+  return authSessions
+    .map((item) => ({
+      id: asString(item?.id),
+      userId: asString(item?.userId),
+      token: asString(item?.token),
+      createdAt: asString(item?.createdAt) || nowIso(),
+      lastUsedAt: asString(item?.lastUsedAt) || asString(item?.createdAt) || nowIso(),
+    }))
+    .filter((item) => item.id && item.userId && item.token && userIds.has(item.userId));
+}
+
+function createAuthSession(userId) {
+  const session = {
+    id: createId("auth"),
+    userId,
+    token: createAuthToken(),
+    createdAt: nowIso(),
+    lastUsedAt: nowIso(),
+  };
+  store.authSessions.push(session);
+  return session;
 }
 
 function persistStore() {
@@ -1877,6 +2704,85 @@ function asString(value) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeUserRole(rawRole) {
+  const role = asString(rawRole).toLowerCase();
+  if (!role) {
+    return "";
+  }
+  if (ROLE_DEFINITIONS[role]) {
+    return role;
+  }
+  if (role === "regional_manager" || role === "district_manager" || role === "director" || role === "vp") {
+    return "manager";
+  }
+  if (role === "supervisor") {
+    return "supervisor";
+  }
+  if (role === "field_staff") {
+    return "specialist";
+  }
+  return "";
+}
+
+function normalizeAccount(value) {
+  return asString(value).toLowerCase();
+}
+
+function isValidAccount(account) {
+  return /^[a-zA-Z0-9._-]{3,40}$/.test(asString(account));
+}
+
+function toUniqueAccount(rawAccount, usedAccounts) {
+  const cleaned = normalizeAccount(rawAccount).replace(/[^a-z0-9._-]/g, "").slice(0, 40);
+  const base = cleaned.length >= 3 ? cleaned : `user${usedAccounts.size + 1}`;
+  let account = base;
+  let cursor = 2;
+  while (!isValidAccount(account) || usedAccounts.has(account)) {
+    const suffix = String(cursor);
+    const head = base.slice(0, Math.max(3, 40 - suffix.length));
+    account = `${head}${suffix}`;
+    cursor += 1;
+  }
+  usedAccounts.add(account);
+  return account;
+}
+
+function createPasswordSalt() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function hashPassword(password, salt) {
+  return crypto
+    .pbkdf2Sync(password, salt, PASSWORD_PBKDF2_ITERATIONS, PASSWORD_PBKDF2_KEY_LENGTH, PASSWORD_PBKDF2_DIGEST)
+    .toString("hex");
+}
+
+function verifyPassword(password, salt, expectedHash) {
+  const normalizedSalt = asString(salt);
+  const normalizedHash = asString(expectedHash);
+  if (!normalizedSalt || !normalizedHash || !password) {
+    return false;
+  }
+  const actual = Buffer.from(hashPassword(password, normalizedSalt), "hex");
+  const expected = Buffer.from(normalizedHash, "hex");
+  if (actual.length !== expected.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+function createAuthToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
+
+function extractBearerToken(req) {
+  const header = asString(req.headers?.authorization);
+  if (header.toLowerCase().startsWith("bearer ")) {
+    return asString(header.slice(7));
+  }
+  return asString(req.headers?.["x-auth-token"]);
 }
 
 function uniqueStrings(values) {

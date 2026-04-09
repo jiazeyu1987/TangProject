@@ -1,0 +1,97 @@
+- generic [ref=e2]:
+  - banner [ref=e21]:
+    - generic [ref=e22]:
+      - strong [ref=e23]: 李伟
+      - generic [ref=e24]: 专员 · 华东
+    - button "退出登录" [ref=e25] [cursor=pointer]
+  - main [ref=e26]:
+    - article [ref=e74]:
+      - generic [ref=e75]:
+        - tablist "台账子导航" [ref=e76]:
+          - tab "Ledger 医院项目台账" [ref=e77] [cursor=pointer]:
+            - generic [ref=e78]: Ledger
+            - generic [ref=e79]: 医院项目台账
+          - tab "Project Detail 项目详情视图" [active] [selected] [ref=e80] [cursor=pointer]:
+            - generic [ref=e81]: Project Detail
+            - generic [ref=e82]: 项目详情视图
+        - paragraph [ref=e83]: 查看单个医院项目的关键联系人、历史更新与当前推进计划。
+      - tabpanel "Project Detail 项目详情视图" [ref=e130]:
+        - generic [ref=e131]:
+          - article [ref=e132]:
+            - generic [ref=e133]:
+              - generic [ref=e134]:
+                - paragraph [ref=e135]: 华东 · 杭州 · 三甲
+                - heading "杭州市第二人民医院" [level=3] [ref=e136]
+              - generic [ref=e137]:
+                - generic [ref=e138]: 科室接触
+                - generic [ref=e139]: 高风险
+            - paragraph [ref=e140]: 麻醉科仍在等待采购流程确认，对经济性材料提出更高要求。
+            - generic [ref=e141]:
+              - generic [ref=e142]: 采购流程
+              - generic [ref=e143]: 临床价值
+              - generic [ref=e144]: 科室支持
+          - article [ref=e145]:
+            - paragraph [ref=e146]: 当前推进
+            - strong [ref=e147]: 协调院内采购与麻醉科负责人开一次联合沟通
+            - paragraph [ref=e148]: 需管理关注 · 停滞 22 天
+            - generic [ref=e149]:
+              - generic [ref=e150]: 负责人 李伟
+              - generic [ref=e151]: 留言 00/00
+        - generic [ref=e152]:
+          - article [ref=e153]:
+            - text: 最近推进
+            - strong [ref=e154]: 03/18
+            - generic [ref=e155]: 1 条更新
+          - article [ref=e156]:
+            - text: 下一步截止
+            - strong [ref=e157]: 04/05
+            - generic [ref=e158]: 建议按期推进
+          - article [ref=e159]:
+            - text: 任务状态
+            - strong [ref=e160]: 1 个待办
+            - generic [ref=e161]: 1 个逾期
+          - article [ref=e162]:
+            - text: 留言进度
+            - strong [ref=e163]: 00/00
+            - generic [ref=e164]: 暂无留言
+        - generic [ref=e165]:
+          - article [ref=e166]:
+            - generic [ref=e167]:
+              - heading "关键联系人" [level=4] [ref=e168]
+              - generic [ref=e169]: 1 位
+            - article [ref=e171]:
+              - strong [ref=e172]: 赵主任
+              - text: 科主任 麻醉科
+          - article [ref=e173]:
+            - generic [ref=e174]:
+              - heading "项目看板" [level=4] [ref=e175]
+              - generic [ref=e176]: 李伟
+            - generic [ref=e177]:
+              - article [ref=e178]:
+                - text: 医院等级
+                - strong [ref=e179]: 三甲
+              - article [ref=e180]:
+                - text: 所在城市
+                - strong [ref=e181]: 杭州
+              - article [ref=e182]:
+                - text: 管理关注
+                - strong [ref=e183]: 需管理关注
+              - article [ref=e184]:
+                - text: 项目状态
+                - strong [ref=e185]: 停滞 22 天
+        - generic [ref=e186]:
+          - generic [ref=e187]:
+            - heading "历史时间线" [level=4] [ref=e188]
+            - generic [ref=e189]: 1 条
+          - article [ref=e191]:
+            - generic [ref=e192]:
+              - strong [ref=e193]: 麻醉科
+              - generic [ref=e194]: 2026-03-18
+            - paragraph [ref=e195]: 赵主任有兴趣，但明确要求先走完院内采购和成本论证。
+            - generic [ref=e196]: 阻塞：采购流程不清楚，科室支持力度不足，经济性材料不完整。
+  - navigation "主导航" [ref=e66]:
+    - button "录入" [ref=e67] [cursor=pointer]
+    - button "信号" [ref=e68] [cursor=pointer]
+    - button "台账" [ref=e69] [cursor=pointer]
+    - button "任务" [ref=e70] [cursor=pointer]
+    - button "汇总" [ref=e71] [cursor=pointer]

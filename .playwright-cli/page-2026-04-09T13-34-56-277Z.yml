@@ -1,0 +1,46 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - strong [ref=e5]: 李伟
+      - generic [ref=e6]: 专员 · 华东
+    - button "退出登录" [ref=e7] [cursor=pointer]
+  - main [ref=e8]:
+    - article [ref=e129]:
+      - generic [ref=e130]:
+        - generic [ref=e131]:
+          - paragraph [ref=e132]: Insights
+          - heading "管理汇总" [level=2] [ref=e133]
+        - paragraph [ref=e134]: 按阶段分布、高频问题和最新动态汇总项目情况，支持管理判断与资源配置。
+      - generic [ref=e135]:
+        - tablist "汇总子导航" [ref=e136]:
+          - tab "管理汇总" [selected] [ref=e137] [cursor=pointer]
+          - tab "最近动态" [ref=e138] [cursor=pointer]
+          - tab "三级管理" [ref=e139] [cursor=pointer]
+        - generic [ref=e140]:
+          - heading "管理汇总" [level=3] [ref=e141]
+          - paragraph [ref=e142]: 按阶段分布与高频问题汇总当前项目状态。
+          - generic [ref=e143]:
+            - heading "阶段分布" [level=4] [ref=e144]
+            - generic [ref=e145]:
+              - generic [ref=e146]: 科室接触
+              - strong [ref=e149]: "1"
+            - generic [ref=e150]:
+              - generic [ref=e151]: 试用评估
+              - strong [ref=e154]: "1"
+            - generic [ref=e155]:
+              - generic [ref=e156]: 目标建档
+              - strong [ref=e159]: "1"
+          - generic [ref=e160]:
+            - heading "高频问题" [level=4] [ref=e161]
+            - generic [ref=e162]:
+              - generic [ref=e163]: 采购流程 1
+              - generic [ref=e164]: 临床价值 1
+              - generic [ref=e165]: 科室支持 1
+              - generic [ref=e166]: 收费 1
+              - generic [ref=e167]: 培训 1
+  - navigation "主导航" [ref=e122]:
+    - button "录入" [ref=e123] [cursor=pointer]
+    - button "信号" [ref=e124] [cursor=pointer]
+    - button "台账" [ref=e125] [cursor=pointer]
+    - button "任务" [ref=e126] [cursor=pointer]
+    - button "汇总" [active] [ref=e127] [cursor=pointer]

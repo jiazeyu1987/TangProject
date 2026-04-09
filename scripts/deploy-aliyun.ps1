@@ -191,7 +191,7 @@ try {
   )
   $requiredDataFiles = @(
     "data/intake-schema.json",
-    "data/followup-question-schema.json",
+    "data/followup-questions-schema.json",
     "data/seed-store.json"
   )
 
@@ -288,7 +288,31 @@ try {
   }
 
   Write-Step "Validating remote bootstrap payload"
-  $bootstrap = Invoke-RestJsonWithRetry -Uri "http://${ServerHost}:$ServicePort/api/bootstrap" -Context "Public bootstrap check"
+  $bootstrapUri = "http://${ServerHost}:$ServicePort/api/bootstrap"
+  $bootstrap = $null
+  try {
+    $bootstrap = Invoke-RestMethod -Method Get -Uri $bootstrapUri -TimeoutSec 20
+  } catch {
+    $response = $_.Exception.Response
+    $statusCode = $null
+    if ($response) {
+      $statusCode = [int]$response.StatusCode
+    }
+    if ($statusCode -ne 401) {
+      throw
+    }
+
+    Write-Step "Bootstrap is protected by auth, validating via login"
+    $verifyAccount = "user-li-wei"
+    $verifyPassword = "123456"
+    $loginBody = @{ account = $verifyAccount; password = $verifyPassword } | ConvertTo-Json
+    $loginResp = Invoke-RestMethod -Method Post -Uri "http://${ServerHost}:$ServicePort/api/auth/login" -ContentType "application/json" -Body $loginBody -TimeoutSec 20
+    if (-not $loginResp.token) {
+      throw "Public bootstrap auth verification failed: login did not return token."
+    }
+    $authHeaders = @{ Authorization = "Bearer $($loginResp.token)" }
+    $bootstrap = Invoke-RestMethod -Method Get -Uri $bootstrapUri -Headers $authHeaders -TimeoutSec 20
+  }
   if ($null -eq $bootstrap.projects -or $null -eq $bootstrap.tasks) {
     throw "Bootstrap payload missing required fields: projects/tasks."
   }

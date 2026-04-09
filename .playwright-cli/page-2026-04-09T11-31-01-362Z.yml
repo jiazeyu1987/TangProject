@@ -1,0 +1,131 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - strong [ref=e5]: 李伟
+      - generic [ref=e6]: 专员 · 华东
+    - button "退出登录" [ref=e7] [cursor=pointer]
+  - main [ref=e8]:
+    - article [ref=e11]:
+      - generic [ref=e12]:
+        - tablist "台账子导航" [ref=e13]:
+          - tab "Ledger 医院项目台账" [ref=e14] [cursor=pointer]:
+            - generic [ref=e15]: Ledger
+            - generic [ref=e16]: 医院项目台账
+          - tab "Project Detail 项目详情视图" [selected] [ref=e17] [cursor=pointer]:
+            - generic [ref=e18]: Project Detail
+            - generic [ref=e19]: 项目详情视图
+        - paragraph [ref=e20]: 查看单个医院项目的关键联系人、历史更新、上级留言与当前推进计划。
+      - tabpanel "Project Detail 项目详情视图" [ref=e21]:
+        - generic [ref=e22]:
+          - article [ref=e23]:
+            - generic [ref=e24]:
+              - generic [ref=e25]:
+                - paragraph [ref=e26]: 华东 · 上海 · 三甲
+                - heading "上海市第一人民医院" [level=3] [ref=e27]
+              - generic [ref=e28]:
+                - generic [ref=e29]: 试用评估
+                - generic [ref=e30]: 高风险
+            - paragraph [ref=e31]: 疼痛科认可临床效果，但对收费路径和培训安排仍有顾虑。
+            - generic [ref=e32]:
+              - generic [ref=e33]: 收费
+              - generic [ref=e34]: 培训
+          - article [ref=e35]:
+            - paragraph [ref=e36]: 当前推进
+            - strong [ref=e37]: 补充收费测算材料并锁定下一轮试用时间
+            - paragraph [ref=e38]: 需管理关注 · 最近跟进 04/02
+            - generic [ref=e39]:
+              - generic [ref=e40]: 负责人 李伟
+              - generic [ref=e41]: 上级留言 03/06
+        - generic [ref=e42]:
+          - article [ref=e43]:
+            - text: 最近推进
+            - strong [ref=e44]: 04/02
+            - generic [ref=e45]: 1 条更新
+          - article [ref=e46]:
+            - text: 下一步截止
+            - strong [ref=e47]: 04/07
+            - generic [ref=e48]: 建议按期推进
+          - article [ref=e49]:
+            - text: 任务状态
+            - strong [ref=e50]: 1 个待办
+            - generic [ref=e51]: 1 个逾期
+          - article [ref=e52]:
+            - text: 上级留言
+            - strong [ref=e53]: 03/06
+            - generic [ref=e54]: 6 条上级留言
+        - generic [ref=e55]:
+          - article [ref=e56]:
+            - generic [ref=e57]:
+              - heading "关键联系人" [level=4] [ref=e58]
+              - generic [ref=e59]: 1 位
+            - article [ref=e61]:
+              - strong [ref=e62]: 陈主任
+              - text: 科主任 疼痛科
+          - article [ref=e63]:
+            - generic [ref=e64]:
+              - heading "项目看板" [level=4] [ref=e65]
+              - generic [ref=e66]: 李伟
+            - generic [ref=e67]:
+              - article [ref=e68]:
+                - text: 医院等级
+                - strong [ref=e69]: 三甲
+              - article [ref=e70]:
+                - text: 所在城市
+                - strong [ref=e71]: 上海
+              - article [ref=e72]:
+                - text: 管理关注
+                - strong [ref=e73]: 需管理关注
+              - article [ref=e74]:
+                - text: 项目状态
+                - strong [ref=e75]: 持续推进中
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - heading "历史时间线" [level=4] [ref=e78]
+            - generic [ref=e79]: 1 条
+          - article [ref=e81]:
+            - generic [ref=e82]:
+              - strong [ref=e83]: 疼痛科
+              - generic [ref=e84]: 2026-04-02
+            - paragraph [ref=e85]: 主任认可镇痛效果，希望先补一版收费测算，再决定扩大试用。
+            - generic [ref=e86]: 阻塞：收费路径不清晰，培训资源也需要提前锁定。
+            - generic [ref=e87]:
+              - paragraph [ref=e88]: 上级留言
+              - article [ref=e89]:
+                - generic [ref=e90]: 王超：???????????????????????
+                - generic [ref=e91]:
+                  - button "回答" [ref=e92] [cursor=pointer]
+                  - generic [ref=e93]: 已回复
+                  - generic [ref=e94]: 已读
+              - article [ref=e95]:
+                - generic [ref=e96]: 王超：?????????????????????????
+                - generic [ref=e97]:
+                  - button "回答" [ref=e98] [cursor=pointer]
+                  - generic [ref=e99]: 已读
+              - article [ref=e100]:
+                - generic [ref=e101]: 王超：???????????????????????
+                - generic [ref=e102]:
+                  - button "回答" [ref=e103] [cursor=pointer]
+                  - generic [ref=e104]: 已回复
+                  - generic [ref=e105]: 已读
+              - article [ref=e106]:
+                - generic [ref=e107]: 王超：???????????????????/????
+                - generic [ref=e108]:
+                  - button "回答" [ref=e109] [cursor=pointer]
+                  - button "已读" [ref=e110] [cursor=pointer]
+              - article [ref=e111]:
+                - generic [ref=e112]: 王超：??????????????????????
+                - generic [ref=e113]:
+                  - button "回答" [ref=e114] [cursor=pointer]
+                  - generic [ref=e115]: 已回复
+                  - generic [ref=e116]: 已读
+              - article [ref=e117]:
+                - generic [ref=e118]: 王超：????????????????????????
+                - generic [ref=e119]:
+                  - button "回答" [ref=e120] [cursor=pointer]
+                  - button "已读" [ref=e121] [cursor=pointer]
+  - navigation "主导航" [ref=e122]:
+    - button "录入" [ref=e123] [cursor=pointer]
+    - button "信号" [ref=e124] [cursor=pointer]
+    - button "台账" [ref=e125] [cursor=pointer]
+    - button "任务" [ref=e126] [cursor=pointer]
+    - button "汇总" [ref=e127] [cursor=pointer]

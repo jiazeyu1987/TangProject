@@ -1,8 +1,15 @@
 const STORAGE_KEY = "clinical-rollout-selected-project";
 const ACTIVE_TAB_KEY = "clinical-rollout-active-tab";
+const AUTH_TOKEN_KEY = "clinical-rollout-auth-token";
+const INSIGHT_SUBTAB_KEY = "clinical-rollout-insight-subtab";
+const LEDGER_SUBTAB_KEY = "clinical-rollout-ledger-subtab";
 
 const elements = {
+  appShell: document.querySelector("#appShell"),
   toast: document.querySelector("#toast"),
+  sessionUserName: document.querySelector("#sessionUserName"),
+  sessionUserRole: document.querySelector("#sessionUserRole"),
+  logoutButton: document.querySelector("#logoutButton"),
   tabBar: document.querySelector("#tabBar"),
   intakeForm: document.querySelector("#intakeForm"),
   projectSelect: document.querySelector("#projectSelect"),
@@ -27,18 +34,57 @@ const elements = {
   taskBoard: document.querySelector("#taskBoard"),
   insightPanel: document.querySelector("#insightPanel"),
   aiFollowupButton: document.querySelector("#aiFollowupButton"),
+  historyInfoButton: document.querySelector("#historyInfoButton"),
   followupDialog: document.querySelector("#followupDialog"),
   followupDialogForm: document.querySelector("#followupDialogForm"),
   followupDialogCloseButton: document.querySelector("#followupDialogCloseButton"),
   followupDialogCancelButton: document.querySelector("#followupDialogCancelButton"),
   followupDialogQuestionList: document.querySelector("#followupDialogQuestionList"),
   followupDialogSubmitButton: document.querySelector("#followupDialogSubmitButton"),
+  historyInfoDialog: document.querySelector("#historyInfoDialog"),
+  historyInfoDialogCloseButton: document.querySelector("#historyInfoDialogCloseButton"),
+  historyInfoDialogRefreshButton: document.querySelector("#historyInfoDialogRefreshButton"),
+  historyInfoDialogList: document.querySelector("#historyInfoDialogList"),
+  authDialog: document.querySelector("#authDialog"),
+  authDialogTitle: document.querySelector("#authDialogTitle"),
+  authDialogCopy: document.querySelector("#authDialogCopy"),
+  authDialogCloseButton: document.querySelector("#authDialogCloseButton"),
+  authFeedback: document.querySelector("#authFeedback"),
+  authModeLoginButton: document.querySelector("#authModeLoginButton"),
+  authModeRegisterButton: document.querySelector("#authModeRegisterButton"),
+  authLoginForm: document.querySelector("#authLoginForm"),
+  authLoginAccountInput: document.querySelector("#authLoginAccountInput"),
+  authLoginPasswordInput: document.querySelector("#authLoginPasswordInput"),
+  authLoginSubmitButton: document.querySelector("#authLoginSubmitButton"),
+  authRegisterForm: document.querySelector("#authRegisterForm"),
+  authRegisterNameInput: document.querySelector("#authRegisterNameInput"),
+  authRegisterAccountInput: document.querySelector("#authRegisterAccountInput"),
+  authRegisterPasswordInput: document.querySelector("#authRegisterPasswordInput"),
+  authRegisterRoleSelect: document.querySelector("#authRegisterRoleSelect"),
+  authRegisterRegionSelect: document.querySelector("#authRegisterRegionSelect"),
+  authRegisterSubmitButton: document.querySelector("#authRegisterSubmitButton"),
+  authLogoutInsideButton: document.querySelector("#authLogoutInsideButton"),
 };
 
 const state = {
+  authToken: localStorage.getItem(AUTH_TOKEN_KEY) || "",
+  auth: {
+    busy: false,
+    mode: "login",
+    dialogOpen: false,
+    feedback: {
+      tone: "",
+      message: "",
+    },
+  },
+  authOptions: {
+    regions: [],
+  },
   bootstrap: null,
   selectedProjectId: localStorage.getItem(STORAGE_KEY) || "",
   activeTab: localStorage.getItem(ACTIVE_TAB_KEY) || "entry",
+  insightSubTab: localStorage.getItem(INSIGHT_SUBTAB_KEY) || "summary",
+  ledgerSubTab: localStorage.getItem(LEDGER_SUBTAB_KEY) || "list",
   projectKeyword: "",
   projectSearchOpen: false,
   projectModalOpen: false,
@@ -55,6 +101,18 @@ const state = {
   },
   lastResult: null,
   busy: false,
+  backups: {
+    busy: false,
+    loaded: false,
+    error: "",
+    list: [],
+    maxBackups: 30,
+    scheduler: {
+      running: false,
+      lastRunAt: "",
+      nextRunAt: "",
+    },
+  },
   followup: {
     sessionId: "",
     history: [],
@@ -64,12 +122,44 @@ const state = {
     pendingQuestions: [],
     draftAnswers: {},
   },
+  historyInfo: {
+    dialogOpen: false,
+    busy: false,
+    error: "",
+    projectId: "",
+    sessions: [],
+  },
 };
 
 const VISIT_DATE_OFFSETS = {
   today: 0,
   yesterday: 1,
   day_before_yesterday: 2,
+};
+
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (input, init = {}) => {
+  const requestInit = { ...init };
+  const headers = new Headers(requestInit.headers || {});
+  const url = typeof input === "string" ? input : input?.url || "";
+  const isApi = String(url).startsWith("/api/");
+  const authTokenForRequest = isApi && state.authToken ? String(state.authToken) : "";
+  if (authTokenForRequest) {
+    headers.set("Authorization", `Bearer ${authTokenForRequest}`);
+  }
+  requestInit.headers = headers;
+  const response = await nativeFetch(input, requestInit);
+  const isPublicAuth = String(url).startsWith("/api/auth/login") || String(url).startsWith("/api/auth/register");
+  if (
+    response.status === 401 &&
+    isApi &&
+    !isPublicAuth &&
+    authTokenForRequest &&
+    authTokenForRequest === String(state.authToken || "")
+  ) {
+    handleUnauthorized();
+  }
+  return response;
 };
 
 boot();
@@ -81,6 +171,7 @@ elements.projectSelect.addEventListener("change", () => {
   clearSupplementContext();
   persistSelection();
   resetFollowupState();
+  resetHistoryInfoState();
   renderAll();
 });
 
@@ -93,6 +184,22 @@ elements.tabBar.addEventListener("click", (event) => {
   state.activeTab = button.dataset.tab;
   persistActiveTab();
   renderTabs();
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-ledger-subtab]");
+  if (!button) {
+    return;
+  }
+
+  const nextTab = normalizeLedgerSubTab(button.dataset.ledgerSubtab);
+  if (nextTab === state.ledgerSubTab) {
+    return;
+  }
+
+  state.ledgerSubTab = nextTab;
+  persistLedgerSubTab();
+  renderLedgerSubTabs();
 });
 
 elements.intakeForm.addEventListener("submit", async (event) => {
@@ -142,16 +249,26 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") {
     return;
   }
+  if (state.auth.dialogOpen) {
+    return;
+  }
   if (state.projectModalOpen) {
     closeProjectModal();
   }
   if (state.followup.dialogOpen) {
     closeFollowupDialog();
   }
+  if (state.historyInfo.dialogOpen) {
+    closeHistoryInfoDialog();
+  }
 });
 
 elements.aiFollowupButton.addEventListener("click", async () => {
   await openFollowupDialogByGeneratingQuestions();
+});
+
+elements.historyInfoButton?.addEventListener("click", async () => {
+  await openHistoryInfoDialog();
 });
 
 elements.followupDialog.addEventListener("click", (event) => {
@@ -168,6 +285,88 @@ elements.followupDialogCancelButton.addEventListener("click", () => {
   closeFollowupDialog();
 });
 
+elements.historyInfoDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.historyInfoDialog) {
+    closeHistoryInfoDialog();
+  }
+});
+
+elements.historyInfoDialogCloseButton?.addEventListener("click", () => {
+  closeHistoryInfoDialog();
+});
+
+elements.historyInfoDialogRefreshButton?.addEventListener("click", async () => {
+  await loadHistoryInfo(true);
+});
+
+elements.historyInfoDialogList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-history-action='continue'][data-history-session-id]");
+  if (!button) {
+    return;
+  }
+  const historySessionId = String(button.dataset.historySessionId || "").trim();
+  if (!historySessionId || state.historyInfo.busy || state.followup.busy || state.busy) {
+    return;
+  }
+  const matchedSession = (state.historyInfo.sessions || []).find((item) => item.sessionId === historySessionId);
+  if (!matchedSession) {
+    showToast("历史信息已变化，请刷新后重试", "warn");
+    return;
+  }
+  if (!String(elements.noteInput.value || "").trim() && matchedSession.seedNote) {
+    elements.noteInput.value = matchedSession.seedNote;
+    invalidateIntakePreview();
+    renderIntakeSubmitButton();
+  }
+  closeHistoryInfoDialog();
+  await openFollowupDialogByGeneratingQuestions({ historySessionId });
+});
+
+elements.logoutButton.addEventListener("click", async () => {
+  await logout();
+});
+
+elements.authDialogCloseButton.addEventListener("click", () => {
+  if (!state.authToken) {
+    setAuthFeedback("请先登录后继续使用系统。", "warn");
+    return;
+  }
+  closeAuthDialog();
+});
+
+elements.authDialog.addEventListener("click", (event) => {
+  if (event.target !== elements.authDialog) {
+    return;
+  }
+  if (!state.authToken) {
+    setAuthFeedback("请先登录后继续使用系统。", "warn");
+    return;
+  }
+  closeAuthDialog();
+});
+
+elements.authModeLoginButton.addEventListener("click", () => {
+  switchAuthMode("login");
+});
+
+elements.authModeRegisterButton.addEventListener("click", () => {
+  switchAuthMode("register");
+});
+
+elements.authLoginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await submitLogin();
+});
+
+elements.authRegisterForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await submitRegister();
+});
+
+elements.authLogoutInsideButton.addEventListener("click", async () => {
+  await logout();
+});
+
 elements.followupDialogForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   await submitFollowupAnswers();
@@ -180,7 +379,7 @@ elements.followupDialogQuestionList.addEventListener("input", (event) => {
   }
   const questionId = String(input.dataset.questionId || "");
   state.followup.draftAnswers[questionId] = input.value;
-  renderFollowupDialog();
+  syncFollowupDialogControls();
 });
 
 elements.projectList.addEventListener("click", (event) => {
@@ -199,32 +398,48 @@ elements.projectList.addEventListener("click", (event) => {
 
   state.selectedProjectId = card.dataset.projectId;
   state.activeRemarkId = "";
+  state.ledgerSubTab = "detail";
   clearSupplementContext();
   persistSelection();
+  persistLedgerSubTab();
   resetFollowupState();
+  resetHistoryInfoState();
   renderAll();
 });
 
 elements.projectDetail.addEventListener("click", async (event) => {
   const actionButton = event.target.closest("button[data-remark-action][data-remark-id]");
-  if (!actionButton) {
+  if (actionButton) {
+    event.preventDefault();
+
+    const action = String(actionButton.dataset.remarkAction || "");
+    const remarkId = String(actionButton.dataset.remarkId || "");
+    if (!remarkId || state.busy) {
+      return;
+    }
+
+    if (action === "read") {
+      await markProjectRemarkAsRead(remarkId);
+      return;
+    }
+    if (action === "reply") {
+      startSupplementFromRemark(remarkId);
+    }
+    return;
+  }
+
+  const createRemarkButton = event.target.closest("button[data-create-project-remark]");
+  if (!createRemarkButton) {
     return;
   }
   event.preventDefault();
 
-  const action = String(actionButton.dataset.remarkAction || "");
-  const remarkId = String(actionButton.dataset.remarkId || "");
-  if (!remarkId || state.busy) {
+  const projectId = String(createRemarkButton.dataset.createProjectRemark || "");
+  if (!projectId || state.busy) {
     return;
   }
 
-  if (action === "read") {
-    await markProjectRemarkAsRead(remarkId);
-    return;
-  }
-  if (action === "reply") {
-    startSupplementFromRemark(remarkId);
-  }
+  await createProjectRemark(projectId);
 });
 
 elements.signalPanel.addEventListener("click", (event) => {
@@ -233,14 +448,7 @@ elements.signalPanel.addEventListener("click", (event) => {
     return;
   }
 
-  state.selectedProjectId = button.dataset.focusProject;
-  state.activeTab = "ledger";
-  state.activeRemarkId = "";
-  clearSupplementContext();
-  persistSelection();
-  persistActiveTab();
-  resetFollowupState();
-  renderAll();
+  openProjectLedgerDetail(button.dataset.focusProject);
 });
 
 elements.taskBoard.addEventListener("click", async (event) => {
@@ -252,17 +460,108 @@ elements.taskBoard.addEventListener("click", async (event) => {
   await updateTaskStatus(button.dataset.taskId, button.dataset.taskStatus);
 });
 
+elements.insightPanel.addEventListener("click", async (event) => {
+  const subTabButton = event.target.closest("button[data-insight-subtab]");
+  if (subTabButton) {
+    const nextTab = normalizeInsightSubTab(subTabButton.dataset.insightSubtab);
+    if (nextTab !== state.insightSubTab) {
+      state.insightSubTab = nextTab;
+      persistInsightSubTab();
+      renderInsights();
+      if (nextTab === "management" && isCurrentUserManager()) {
+        await loadBackups(false);
+      }
+    }
+    return;
+  }
+
+  const projectButton = event.target.closest("[data-focus-project]");
+  if (projectButton) {
+    openProjectLedgerDetail(projectButton.dataset.focusProject);
+    return;
+  }
+
+  const createBackupButton = event.target.closest("button[data-backup-action='create']");
+  if (createBackupButton) {
+    await createBackupNow();
+    return;
+  }
+
+  const restoreBackupButton = event.target.closest("button[data-backup-action='restore'][data-backup-id]");
+  if (restoreBackupButton) {
+    const backupId = String(restoreBackupButton.dataset.backupId || "").trim();
+    if (!backupId) {
+      return;
+    }
+    const confirmed = window.confirm("确认从该备份恢复数据吗？恢复后所有用户会被强制下线。");
+    if (!confirmed) {
+      return;
+    }
+    await restoreBackupById(backupId);
+    return;
+  }
+
+  const button = event.target.closest("button[data-management-action='save-region'][data-user-id]");
+  if (!button || state.busy || state.auth.busy) {
+    return;
+  }
+  const userId = String(button.dataset.userId || "");
+  if (!userId) {
+    return;
+  }
+  const select = elements.insightPanel.querySelector(`select[data-management-region-select="${escapeSelectorValue(userId)}"]`);
+  const regionId = String(select?.value || "").trim();
+  if (!regionId) {
+    showToast("请选择区域后再保存", "warn");
+    return;
+  }
+  await updateUserRegion(userId, regionId);
+});
+
 async function boot() {
   elements.visitDatePreset.value = "today";
+  await loadAuthOptions();
+  renderAuthState();
+  if (!state.authToken) {
+    openAuthDialog("login");
+    return;
+  }
   await loadBootstrap(false);
 }
 
+async function loadAuthOptions() {
+  try {
+    const response = await fetch("/api/auth/options");
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    state.authOptions.regions = Array.isArray(payload.regions) ? payload.regions : [];
+    renderAuthRegionOptions();
+  } catch (error) {
+    state.authOptions.regions = [];
+    renderAuthRegionOptions();
+    showToast(error instanceof Error ? error.message : "加载注册选项失败", "error");
+  }
+}
+
 async function loadBootstrap(preserveResult) {
+  if (!state.authToken) {
+    openAuthDialog("login");
+    return;
+  }
   setBusy(true);
 
   try {
     const response = await fetch("/api/bootstrap");
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
     const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
     state.bootstrap = payload;
     ensureSelection();
     if (!preserveResult) {
@@ -270,6 +569,7 @@ async function loadBootstrap(preserveResult) {
     }
     renderAll();
     applyHealthState(payload.health);
+    closeAuthDialog();
   } catch (_error) {
     showToast("系统后端连接失败", "error");
   } finally {
@@ -415,12 +715,21 @@ function renderIntakeSubmitButton() {
   }
 
   if (elements.aiFollowupButton) {
+    const hasFollowupSession = Boolean(state.followup.sessionId);
     elements.aiFollowupButton.disabled = !(
       !state.busy &&
       !state.followup.busy &&
       !state.followup.dialogOpen &&
-      previewReady &&
-      Boolean(projectId && note)
+      Boolean(projectId && note) &&
+      (previewReady || hasFollowupSession)
+    );
+  }
+  if (elements.historyInfoButton) {
+    elements.historyInfoButton.disabled = !(
+      !state.busy &&
+      !state.followup.busy &&
+      !state.historyInfo.busy &&
+      Boolean(projectId)
     );
   }
 }
@@ -515,6 +824,7 @@ async function submitIntake() {
     persistSelection();
     elements.noteInput.value = "";
     resetFollowupState();
+    resetHistoryInfoState();
     renderAll();
     showToast("纪要已提交并同步台账", "ready");
   } catch (error) {
@@ -524,14 +834,16 @@ async function submitIntake() {
   }
 }
 
-async function openFollowupDialogByGeneratingQuestions() {
+async function openFollowupDialogByGeneratingQuestions(options = {}) {
   const { projectId, note, visitDate } = getCurrentIntakeContext();
+  const historySessionId = String(options?.historySessionId || "").trim();
   if (!projectId || !note || state.busy || state.followup.busy) {
     return;
   }
 
   const previewReady = isPreviewReadyForCurrentInput({ projectId, note, visitDate });
-  if (!previewReady) {
+  const hasFollowupSession = Boolean(state.followup.sessionId);
+  if (!previewReady && !hasFollowupSession && !historySessionId) {
     showToast("请先生成纪要，再使用 AI追问", "warn");
     return;
   }
@@ -539,14 +851,15 @@ async function openFollowupDialogByGeneratingQuestions() {
   setFollowupBusy(true);
   showToast("正在生成 AI追问", "busy");
   try {
-    const response = await fetch("/api/followups/questions", {
+    const response = await fetch("/api/followups/question", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         projectId,
         note,
         visitDate,
-        sessionId: state.followup.sessionId || undefined,
+        sessionId: historySessionId ? undefined : state.followup.sessionId || undefined,
+        historySessionId: historySessionId || undefined,
         scenario: buildFollowupScenario("generate"),
       }),
     });
@@ -557,16 +870,19 @@ async function openFollowupDialogByGeneratingQuestions() {
 
     state.followup.sessionId = payload.sessionId;
     state.followup.history = normalizeFollowupHistory(payload.history);
-    state.followup.pendingQuestions = normalizeFollowupQuestions(payload.questions);
-    if (!state.followup.pendingQuestions.length) {
-      state.followup.pendingQuestions = getPendingFollowupQuestionsFromHistory();
-    }
+    const pendingFromPayload = payload.question ? normalizeFollowupQuestions([payload.question]) : [];
+    const pendingFromHistory = getPendingFollowupQuestionsFromHistory();
+    state.followup.pendingQuestions = pendingFromPayload.length
+      ? pendingFromPayload
+      : pendingFromHistory.length
+        ? [pendingFromHistory[pendingFromHistory.length - 1]]
+        : [];
     state.followup.draftAnswers = Object.fromEntries(
       state.followup.pendingQuestions.map((item) => [item.id, ""]),
     );
     openFollowupDialog();
     renderIntakeSubmitButton();
-    showToast(`已生成 ${state.followup.pendingQuestions.length} 个 AI追问`, "ready");
+    showToast("已生成 1 个 AI追问", "ready");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "AI追问生成失败", "error");
   } finally {
@@ -591,6 +907,206 @@ function closeFollowupDialog(options = {}) {
   renderIntakeSubmitButton();
 }
 
+function normalizeHistoryInfoSessions(sessions) {
+  if (!Array.isArray(sessions)) {
+    return [];
+  }
+  return sessions
+    .map((session) => ({
+      sessionId: String(session?.sessionId || ""),
+      projectId: String(session?.projectId || ""),
+      createdAt: String(session?.createdAt || ""),
+      closedAt: String(session?.closedAt || ""),
+      closedReason: String(session?.closedReason || ""),
+      source: String(session?.source || ""),
+      userId: String(session?.userId || ""),
+      userName: String(session?.userName || ""),
+      seedNote: String(session?.seedNote || ""),
+      scenario: session?.scenario && typeof session.scenario === "object" ? session.scenario : null,
+      history: Array.isArray(session?.history)
+        ? session.history.map((item) => ({
+            id: String(item?.id || ""),
+            round: Number(item?.round) || 0,
+            question: String(item?.question || ""),
+            status: String(item?.status || ""),
+            createdAt: String(item?.createdAt || ""),
+            scenarioSnapshot:
+              item?.scenarioSnapshot && typeof item.scenarioSnapshot === "object" ? item.scenarioSnapshot : null,
+            answer: item?.answer
+              ? {
+                  id: String(item.answer.id || ""),
+                  content: String(item.answer.content || ""),
+                  createdAt: String(item.answer.createdAt || ""),
+                  submittedByUserId: String(item.answer.submittedByUserId || ""),
+                  submittedByUserName: String(item.answer.submittedByUserName || ""),
+                  submitScenario:
+                    item.answer.submitScenario && typeof item.answer.submitScenario === "object"
+                      ? item.answer.submitScenario
+                      : null,
+                }
+              : null,
+          }))
+        : [],
+    }))
+    .filter((item) => item.sessionId);
+}
+
+function closeHistoryInfoDialog() {
+  state.historyInfo.dialogOpen = false;
+  renderHistoryInfoDialog();
+}
+
+function resetHistoryInfoState() {
+  state.historyInfo.dialogOpen = false;
+  state.historyInfo.busy = false;
+  state.historyInfo.error = "";
+  state.historyInfo.projectId = "";
+  state.historyInfo.sessions = [];
+  renderHistoryInfoDialog();
+}
+
+function formatScenarioSnapshot(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "--";
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return "--";
+  }
+}
+
+function renderHistoryInfoDialog() {
+  if (!elements.historyInfoDialog || !elements.historyInfoDialogList) {
+    return;
+  }
+  elements.historyInfoDialog.hidden = !state.historyInfo.dialogOpen;
+  if (!state.historyInfo.dialogOpen) {
+    return;
+  }
+  if (elements.historyInfoDialogCloseButton) {
+    elements.historyInfoDialogCloseButton.disabled = state.historyInfo.busy;
+  }
+  if (elements.historyInfoDialogRefreshButton) {
+    elements.historyInfoDialogRefreshButton.disabled = state.historyInfo.busy;
+  }
+
+  const sessions = Array.isArray(state.historyInfo.sessions) ? state.historyInfo.sessions : [];
+  if (state.historyInfo.busy && !sessions.length) {
+    elements.historyInfoDialogList.innerHTML = '<p class="empty-copy">历史信息加载中…</p>';
+    return;
+  }
+  if (state.historyInfo.error && !sessions.length) {
+    elements.historyInfoDialogList.innerHTML = `<p class="backup-error">${escapeHtml(state.historyInfo.error)}</p>`;
+    return;
+  }
+  if (!sessions.length) {
+    elements.historyInfoDialogList.innerHTML = '<p class="empty-copy">暂无历史信息。</p>';
+    return;
+  }
+
+  elements.historyInfoDialogList.innerHTML = sessions
+    .map((session) => {
+      const answerCount = session.history.filter((item) => item.answer && item.answer.content).length;
+      const totalCount = session.history.length;
+      const scenarioText = formatScenarioSnapshot(session.scenario);
+      const qaHtml = session.history.length
+        ? session.history
+            .map((item) => {
+              const answer = item.answer;
+              const submitter = answer?.submittedByUserName || session.userName || "--";
+              const submitAt = answer?.createdAt ? formatDateTime(answer.createdAt) : "--";
+              const submitScenario = formatScenarioSnapshot(answer?.submitScenario || item.scenarioSnapshot);
+              return `
+                <article class="history-qa-item">
+                  <p class="history-question"><strong>问题 ${item.round || "--"}：</strong>${escapeHtml(item.question || "--")}</p>
+                  <p class="history-answer"><strong>回答：</strong>${escapeHtml(answer?.content || "（未回答）")}</p>
+                  <p class="history-meta-line">提交人：${escapeHtml(submitter)} · 提交时间：${escapeHtml(submitAt)}</p>
+                  <details class="history-params">
+                    <summary>提交参数</summary>
+                    <pre>${escapeHtml(submitScenario)}</pre>
+                  </details>
+                </article>
+              `;
+            })
+            .join("")
+        : '<p class="empty-copy">该会话暂无问题记录。</p>';
+      return `
+        <article class="history-session-card">
+          <div class="history-session-head">
+            <div>
+              <strong>历史信息会话 ${escapeHtml(session.sessionId)}</strong>
+              <p class="history-meta-line">
+                创建人：${escapeHtml(session.userName || "--")} · 创建时间：${escapeHtml(
+                  session.createdAt ? formatDateTime(session.createdAt) : "--",
+                )} · 回答进度：${answerCount}/${totalCount}
+              </p>
+              <p class="history-meta-line">
+                状态：${session.closedAt ? "已关闭" : "进行中"}${session.closedAt ? `（${escapeHtml(formatDateTime(session.closedAt))}）` : ""}
+              </p>
+            </div>
+            <button
+              class="chip"
+              type="button"
+              data-history-action="continue"
+              data-history-session-id="${escapeHtml(session.sessionId)}"
+              ${state.historyInfo.busy || state.followup.busy || state.busy ? "disabled" : ""}
+            >
+              基于此继续追问
+            </button>
+          </div>
+          <details class="history-params">
+            <summary>会话参数</summary>
+            <pre>${escapeHtml(scenarioText)}</pre>
+          </details>
+          <div class="history-qa-list">${qaHtml}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function loadHistoryInfo(forceRefresh = false) {
+  const projectId = String(elements.projectSelect?.value || "").trim();
+  if (!projectId || state.historyInfo.busy) {
+    return;
+  }
+  if (!forceRefresh && state.historyInfo.projectId === projectId && state.historyInfo.sessions.length) {
+    renderHistoryInfoDialog();
+    return;
+  }
+  state.historyInfo.busy = true;
+  state.historyInfo.error = "";
+  state.historyInfo.projectId = projectId;
+  renderHistoryInfoDialog();
+  try {
+    const response = await fetch(`/api/followups/history?projectId=${encodeURIComponent(projectId)}&limit=50`);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    state.historyInfo.sessions = normalizeHistoryInfoSessions(payload.sessions);
+  } catch (error) {
+    state.historyInfo.error = error instanceof Error ? error.message : "历史信息加载失败";
+    showToast(state.historyInfo.error, "error");
+  } finally {
+    state.historyInfo.busy = false;
+    renderHistoryInfoDialog();
+    renderIntakeSubmitButton();
+  }
+}
+
+async function openHistoryInfoDialog() {
+  const projectId = String(elements.projectSelect?.value || "").trim();
+  if (!projectId) {
+    showToast("请先选择医院项目", "warn");
+    return;
+  }
+  state.historyInfo.dialogOpen = true;
+  renderHistoryInfoDialog();
+  await loadHistoryInfo(false);
+}
+
 async function submitFollowupAnswers() {
   if (state.busy || state.followup.busy) {
     return;
@@ -603,25 +1119,27 @@ async function submitFollowupAnswers() {
     return;
   }
 
-  const answers = pendingQuestions.map((item) => ({
-    questionMessageId: item.id,
-    answer: String(state.followup.draftAnswers[item.id] || "").trim(),
-  }));
-  const hasEmptyAnswer = answers.some((item) => !item.answer);
-  if (hasEmptyAnswer) {
-    showToast("请先完成所有问题回答", "warn");
+  const latestQuestion = pendingQuestions[pendingQuestions.length - 1];
+  const activeTextarea = elements.followupDialogQuestionList?.querySelector(
+    `textarea[data-question-id="${escapeSelectorValue(latestQuestion.id)}"]`,
+  );
+  const latestAnswer = String(activeTextarea?.value ?? state.followup.draftAnswers[latestQuestion.id] ?? "").trim();
+  state.followup.draftAnswers[latestQuestion.id] = latestAnswer;
+  if (!latestAnswer) {
+    showToast("请先填写追问回答", "warn");
     return;
   }
 
   setFollowupBusy(true);
   showToast("正在保存追问回答", "busy");
   try {
-    const response = await fetch("/api/followups/answers", {
+    const response = await fetch("/api/followups/answer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId,
-        answers,
+        questionMessageId: latestQuestion.id,
+        answer: latestAnswer,
         scenario: buildFollowupScenario("answer"),
       }),
     });
@@ -645,6 +1163,7 @@ async function submitFollowupAnswers() {
 }
 
 function buildFollowupScenario(operation) {
+
   const project = getSelectedProject();
   return {
     operation,
@@ -721,10 +1240,46 @@ function resetFollowupState() {
   renderFollowupDialog();
 }
 
+function resetBackupState() {
+  state.backups.busy = false;
+  state.backups.loaded = false;
+  state.backups.error = "";
+  state.backups.list = [];
+  state.backups.maxBackups = 30;
+  state.backups.scheduler = {
+    running: false,
+    lastRunAt: "",
+    nextRunAt: "",
+  };
+}
+
 function setFollowupBusy(isBusy) {
   state.followup.busy = isBusy;
   renderIntakeSubmitButton();
   renderFollowupDialog();
+}
+
+function getFollowupPendingQuestions() {
+  return state.followup.pendingQuestions.length ? [...state.followup.pendingQuestions] : getPendingFollowupQuestionsFromHistory();
+}
+
+function syncFollowupDialogControls(pendingQuestions = getFollowupPendingQuestions()) {
+  if (!elements.followupDialogSubmitButton) {
+    return;
+  }
+
+  const canSubmit = Boolean(
+    pendingQuestions.length &&
+      pendingQuestions.every((item) => String(state.followup.draftAnswers[item.id] || "").trim()),
+  );
+  elements.followupDialogSubmitButton.disabled = state.busy || state.followup.busy || !canSubmit;
+  elements.followupDialogCloseButton.disabled = state.busy || state.followup.busy;
+  elements.followupDialogCancelButton.disabled = state.busy || state.followup.busy;
+
+  const textareas = elements.followupDialogQuestionList?.querySelectorAll("textarea[data-question-id]") || [];
+  for (const textarea of textareas) {
+    textarea.disabled = state.busy || state.followup.busy;
+  }
 }
 
 function renderFollowupDialog() {
@@ -736,9 +1291,7 @@ function renderFollowupDialog() {
     return;
   }
 
-  const pendingQuestions = state.followup.pendingQuestions.length
-    ? [...state.followup.pendingQuestions]
-    : getPendingFollowupQuestionsFromHistory();
+  const pendingQuestions = getFollowupPendingQuestions();
   if (!pendingQuestions.length) {
     elements.followupDialogQuestionList.innerHTML = '<p class="empty-copy">暂无待回答追问，请重新点击 AI追问。</p>';
   } else {
@@ -755,6 +1308,7 @@ function renderFollowupDialog() {
               data-question-id="${escapeHtml(item.id)}"
               rows="3"
               placeholder="请输入你的回答"
+              ${state.busy || state.followup.busy ? "disabled" : ""}
             >${escapeHtml(value)}</textarea>
           </article>
         `;
@@ -762,13 +1316,7 @@ function renderFollowupDialog() {
       .join("");
   }
 
-  const canSubmit = Boolean(
-    pendingQuestions.length &&
-      pendingQuestions.every((item) => String(state.followup.draftAnswers[item.id] || "").trim()),
-  );
-  elements.followupDialogSubmitButton.disabled = state.busy || state.followup.busy || !canSubmit;
-  elements.followupDialogCloseButton.disabled = state.busy || state.followup.busy;
-  elements.followupDialogCancelButton.disabled = state.busy || state.followup.busy;
+  syncFollowupDialogControls(pendingQuestions);
 }
 
 async function updateTaskStatus(taskId, taskStatus) {
@@ -798,6 +1346,147 @@ async function updateTaskStatus(taskId, taskStatus) {
   }
 }
 
+async function updateUserRegion(userId, regionId) {
+  setBusy(true);
+  showToast("正在更新成员区域", "busy");
+  try {
+    const response = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ regionId }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    state.bootstrap = payload.bootstrap;
+    ensureSelection();
+    renderAll();
+    applyHealthState(payload.bootstrap.health);
+    showToast("成员区域已更新", "ready");
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "成员区域更新失败", "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function loadBackups(forceRefresh = false) {
+  if (!isCurrentUserManager()) {
+    return;
+  }
+  if (state.backups.busy) {
+    return;
+  }
+  if (state.backups.loaded && !forceRefresh) {
+    return;
+  }
+
+  state.backups.busy = true;
+  if (state.activeTab === "insights" && normalizeInsightSubTab(state.insightSubTab) === "management") {
+    renderInsights();
+  }
+  try {
+    const response = await fetch("/api/backups");
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    applyBackupPayload(payload);
+    state.backups.loaded = true;
+    state.backups.error = "";
+  } catch (error) {
+    state.backups.loaded = false;
+    state.backups.error = error instanceof Error ? error.message : "备份列表加载失败";
+    showToast(state.backups.error, "error");
+  } finally {
+    state.backups.busy = false;
+    if (state.activeTab === "insights" && normalizeInsightSubTab(state.insightSubTab) === "management") {
+      renderInsights();
+    }
+  }
+}
+
+async function createBackupNow() {
+  if (!isCurrentUserManager() || state.backups.busy || state.busy || state.auth.busy) {
+    return;
+  }
+
+  state.backups.busy = true;
+  renderInsights();
+  showToast("正在创建备份", "busy");
+  try {
+    const response = await fetch("/api/backups/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    applyBackupPayload(payload);
+    state.backups.loaded = true;
+    state.backups.error = "";
+    showToast("备份已创建", "ready");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "创建备份失败";
+    state.backups.error = message;
+    showToast(message, "error");
+  } finally {
+    state.backups.busy = false;
+    renderInsights();
+  }
+}
+
+async function restoreBackupById(backupId) {
+  if (!isCurrentUserManager() || !backupId || state.backups.busy || state.busy || state.auth.busy) {
+    return;
+  }
+
+  state.backups.busy = true;
+  renderInsights();
+  showToast("正在恢复备份", "busy");
+  try {
+    const response = await fetch("/api/backups/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backupId }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    handleUnauthorized("数据已从备份恢复，请重新登录。");
+    showToast("恢复完成，已退出登录", "ready");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "恢复备份失败";
+    showToast(message, "error");
+    state.backups.busy = false;
+    renderInsights();
+    return;
+  }
+  state.backups.busy = false;
+}
+
+function applyBackupPayload(payload) {
+  const maxBackups = Number(payload?.policy?.maxBackups);
+  state.backups.maxBackups = Number.isFinite(maxBackups) && maxBackups > 0 ? maxBackups : 30;
+  const scheduler = payload?.scheduler || {};
+  state.backups.scheduler = {
+    running: Boolean(scheduler.running),
+    lastRunAt: String(scheduler.lastRunAt || ""),
+    nextRunAt: String(scheduler.nextRunAt || ""),
+  };
+  const backups = Array.isArray(payload?.backups) ? payload.backups : [];
+  state.backups.list = backups.map((item) => ({
+    id: String(item?.id || ""),
+    fileName: String(item?.fileName || ""),
+    trigger: String(item?.trigger || ""),
+    createdAt: String(item?.createdAt || ""),
+    sizeBytes: Number(item?.sizeBytes) || 0,
+  }));
+}
+
 function ensureSelection() {
   const projects = state.bootstrap?.projects || [];
   if (!projects.length) {
@@ -812,18 +1501,24 @@ function ensureSelection() {
 
 function renderAll() {
   if (!state.bootstrap) {
+    renderAuthState();
+    renderHistoryInfoDialog();
     return;
   }
 
+  renderSessionBar();
+  renderAuthState();
   renderTabs();
   renderProjectSearchState();
   renderProjectSelect();
   renderIntakeSubmitButton();
   renderIntakeResult();
   renderFollowupDialog();
+  renderHistoryInfoDialog();
   renderSignals();
   renderProjectList();
   renderProjectDetail();
+  renderLedgerSubTabs();
   renderTaskBoard();
   renderInsights();
 }
@@ -989,9 +1684,9 @@ function renderProjectList() {
             <span
               class="remark-pill ${project.metrics.remarkCount ? "" : "is-empty"}"
               data-remark-focus-project="${project.id}"
-              title="点击顺序定位到对应留言条目"
+              title="点击顺序定位到对应上级留言条目"
             >
-              留言 ${formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount)}
+              上级留言 ${formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount)}
             </span>
             <span>待办 ${project.metrics.openTaskCount}</span>
             <span>逾期 ${project.metrics.overdueTaskCount}</span>
@@ -1003,13 +1698,49 @@ function renderProjectList() {
     .join("");
 }
 
+function formatRiskLevelLabel(riskLevel) {
+  const normalized = String(riskLevel || "").trim().toLowerCase();
+  if (normalized === "high") {
+    return "高风险";
+  }
+  if (normalized === "normal") {
+    return "中风险";
+  }
+  if (normalized === "low") {
+    return "低风险";
+  }
+  return normalized || "--";
+}
+
+function renderDetailMetricCard(label, value, meta) {
+  return `
+    <article class="detail-metric-card">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(meta || "")}</small>
+    </article>
+  `;
+}
+
+function renderDetailEmptyState(title, copy) {
+  return `
+    <article class="detail-empty-state">
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(copy)}</p>
+    </article>
+  `;
+}
+
 function renderProjectDetail() {
   const project = getSelectedProject();
   if (!project) {
     elements.projectDetail.innerHTML = "<p>暂无项目数据。</p>";
     return;
   }
+  const canLeaveProjectRemarks = canCurrentUserLeaveProjectRemarks();
   const remarks = project.remarks || [];
+  const contacts = project.contacts || [];
+  const updates = project.updates || [];
   const remarksByUpdateId = new Map();
   for (const remark of remarks) {
     const key = String(remark.updateId || "");
@@ -1022,58 +1753,150 @@ function renderProjectDetail() {
     remarksByUpdateId.get(key).push(remark);
   }
   const unlinkedRemarks = remarks.filter((remark) => !remark.updateId);
+  const regionLine = [project.region?.name, project.hospital?.city, project.hospital?.level].filter(Boolean).join(" · ");
+  const nextActionText = project.nextAction || "待补充下一步计划";
+  const taskMeta =
+    project.metrics.overdueTaskCount > 0
+      ? `${project.metrics.overdueTaskCount} 个逾期`
+      : project.metrics.openTaskCount > 0
+        ? "当前均未逾期"
+        : "暂无待办任务";
+  const projectHealthText = project.managerAttentionNeeded ? "需管理关注" : "常规推进";
+  const progressText = project.isStalled
+    ? `停滞 ${project.stalledDays} 天`
+    : `最近跟进 ${formatDate(project.lastFollowUpAt)}`;
 
   elements.projectDetail.innerHTML = `
-    <div class="detail-hero">
-      <div>
-        <p class="panel-eyebrow">${escapeHtml(project.region.name)}</p>
-        <h3>${escapeHtml(project.hospital.name)}</h3>
+    <section class="detail-overview">
+      <article class="detail-hero-card">
+        <div class="detail-hero-head">
+          <div class="detail-hero-copy-wrap">
+            <p class="panel-eyebrow">${escapeHtml(regionLine || project.region?.name || "--")}</p>
+            <h3>${escapeHtml(project.hospital.name)}</h3>
+          </div>
+          <div class="detail-pill-row">
+            <span class="stage-pill">${escapeHtml(project.stage.name)}</span>
+            <span class="risk-pill risk-${escapeHtml(project.riskLevel)}">${escapeHtml(formatRiskLevelLabel(project.riskLevel))}</span>
+          </div>
+        </div>
         <p class="detail-copy">${escapeHtml(project.latestSummary || "暂无摘要")}</p>
-      </div>
-      <span class="stage-pill">${escapeHtml(project.stage.name)}</span>
-    </div>
+        <div class="token-row detail-token-row">${renderTagList(project.issueNames)}</div>
+      </article>
 
-    <div class="detail-stats">
-      <article><span>最近推进</span><strong>${formatDate(project.lastFollowUpAt)}</strong></article>
-      <article><span>下一步</span><strong>${escapeHtml(project.nextAction || "未填写")}</strong></article>
-      <article><span>任务状态</span><strong>${project.metrics.openTaskCount} 个待办</strong></article>
-    </div>
-
-    <section class="detail-section">
-      <h4>关键联系人</h4>
-      <div class="contact-list">
-        ${project.contacts.length ? project.contacts.map((contact) => `
-          <article class="contact-card">
-            <strong>${escapeHtml(contact.name)}</strong>
-            <span>${escapeHtml(contact.roleTitle || "角色未填")}</span>
-            <small>${escapeHtml(contact.departmentName || "")}</small>
-          </article>
-        `).join("") : "<p>暂无联系人。</p>"}
-      </div>
+      <article class="detail-action-card">
+        <p class="panel-eyebrow">当前推进</p>
+        <strong>${escapeHtml(nextActionText)}</strong>
+        <p>${escapeHtml(projectHealthText)} · ${escapeHtml(progressText)}</p>
+        <div class="detail-action-meta">
+          <span>负责人 ${escapeHtml(project.owner?.name || "--")}</span>
+          <span>上级留言 ${formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount)}</span>
+        </div>
+      </article>
     </section>
 
-    <section class="detail-section">
-      <h4>历史时间线</h4>
-      <div class="timeline">
-        ${project.updates.map((update) => `
+    <div class="detail-stats">
+      ${renderDetailMetricCard("最近推进", formatDate(project.lastFollowUpAt), updates.length ? `${updates.length} 条更新` : "暂无更新")}
+      ${renderDetailMetricCard("下一步截止", project.nextActionDueAt ? formatDate(project.nextActionDueAt) : "--", project.nextActionDueAt ? "建议按期推进" : "待补充截止时间")}
+      ${renderDetailMetricCard("任务状态", `${project.metrics.openTaskCount} 个待办`, taskMeta)}
+      ${renderDetailMetricCard("上级留言", formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount), remarks.length ? `${remarks.length} 条上级留言` : "暂无上级留言")}
+    </div>
+
+    <section class="detail-board">
+      <article class="detail-section detail-section-card">
+        <div class="detail-section-head">
+          <h4>关键联系人</h4>
+          <span>${contacts.length} 位</span>
+        </div>
+        <div class="contact-list detail-contact-list">
+          ${
+            contacts.length
+              ? contacts
+                  .map(
+                    (contact) => `
+          <article class="contact-card detail-contact-card">
+            <strong>${escapeHtml(contact.name)}</strong>
+            <span>${escapeHtml(contact.roleTitle || "角色未填")}</span>
+            <small>${escapeHtml(contact.departmentName || "未填写科室")}</small>
+          </article>
+        `,
+                  )
+                  .join("")
+              : renderDetailEmptyState("暂无关键联系人", "当前项目还没有沉淀关键联系人，可在后续纪要录入后自动补齐。")
+          }
+        </div>
+      </article>
+
+      <article class="detail-section detail-section-card">
+        <div class="detail-section-head">
+          <h4>项目看板</h4>
+          <span>${escapeHtml(project.owner?.name || "--")}</span>
+        </div>
+        <div class="detail-note-grid">
+          <article class="detail-note-card">
+            <span>医院等级</span>
+            <strong>${escapeHtml(project.hospital.level || "--")}</strong>
+          </article>
+          <article class="detail-note-card">
+            <span>所在城市</span>
+            <strong>${escapeHtml(project.hospital.city || "--")}</strong>
+          </article>
+          <article class="detail-note-card">
+            <span>管理关注</span>
+            <strong>${escapeHtml(projectHealthText)}</strong>
+          </article>
+          <article class="detail-note-card">
+            <span>项目状态</span>
+            <strong>${escapeHtml(project.isStalled ? `停滞 ${project.stalledDays} 天` : "持续推进中")}</strong>
+          </article>
+        </div>
+      </article>
+    </section>
+
+    <section class="detail-section detail-section-card detail-section-timeline">
+      <div class="detail-section-head">
+        <h4>历史时间线</h4>
+        <span>${updates.length ? `${updates.length} 条` : "暂无更新"}</span>
+      </div>
+      <div class="timeline detail-timeline">
+        ${
+          updates.length
+            ? updates
+                .map(
+                  (update) => `
           <article class="timeline-item">
             <div class="timeline-top">
-              <strong>${escapeHtml(update.departmentName)}</strong>
+              <strong>${escapeHtml(update.departmentName || "未填写科室")}</strong>
               <span>${escapeHtml(update.visitDate || formatDate(update.createdAt))}</span>
             </div>
-            <p>${escapeHtml(update.feedbackSummary)}</p>
+            <p>${escapeHtml(update.feedbackSummary || "暂无推进摘要")}</p>
             ${update.blockers ? `<small>阻塞：${escapeHtml(update.blockers)}</small>` : ""}
             ${renderTimelineRemarkRows(remarksByUpdateId.get(update.id) || [])}
           </article>
-        `).join("")}
+        `,
+                )
+                .join("")
+            : renderDetailEmptyState("还没有历史时间线", "项目刚建立或还未录入纪要，首条推进记录生成后会在这里沉淀。")
+        }
       </div>
+      ${
+        canLeaveProjectRemarks
+          ? `
+            <div class="detail-section-footer">
+              <button class="chip detail-section-action" type="button" data-create-project-remark="${escapeHtml(project.id)}">留言</button>
+            </div>
+          `
+          : ""
+      }
     </section>
 
     ${
       unlinkedRemarks.length
         ? `
-          <section class="detail-section">
-            <h4>未关联纪要留言</h4>
+          <section class="detail-section detail-section-card">
+            <div class="detail-section-head">
+              <h4>未关联纪要的上级留言</h4>
+              <span>${unlinkedRemarks.length} 条</span>
+            </div>
             <div class="remark-list">${renderTimelineRemarkRows(unlinkedRemarks)}</div>
           </section>
         `
@@ -1082,12 +1905,50 @@ function renderProjectDetail() {
   `;
 }
 
+function normalizeLedgerSubTab(rawValue) {
+  return String(rawValue || "").trim().toLowerCase() === "detail" ? "detail" : "list";
+}
+
+function renderLedgerSubTabs() {
+  const activeLedgerSubTab = normalizeLedgerSubTab(state.ledgerSubTab);
+  state.ledgerSubTab = activeLedgerSubTab;
+
+  const listTabButton = document.querySelector("[data-ledger-subtab='list']");
+  const detailTabButton = document.querySelector("[data-ledger-subtab='detail']");
+  const subtabCopy = document.querySelector("#ledgerSubtabCopy");
+  const subtabCopyMap = {
+    list: "按医院项目集中查看当前阶段、任务状态、问题标签与最新推进摘要。",
+    detail: "查看单个医院项目的关键联系人、历史更新、上级留言与当前推进计划。",
+  };
+
+  for (const button of [listTabButton, detailTabButton]) {
+    if (!button) {
+      continue;
+    }
+    const isActive = button.dataset.ledgerSubtab === activeLedgerSubTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.setAttribute("tabindex", isActive ? "0" : "-1");
+  }
+
+  if (elements.projectList) {
+    elements.projectList.hidden = activeLedgerSubTab !== "list";
+  }
+  if (elements.projectDetail) {
+    elements.projectDetail.hidden = activeLedgerSubTab !== "detail";
+  }
+  if (subtabCopy) {
+    subtabCopy.textContent = subtabCopyMap[activeLedgerSubTab];
+  }
+}
+
 function renderTimelineRemarkRows(remarks) {
   if (!Array.isArray(remarks) || !remarks.length) {
     return "";
   }
   return `
     <div class="timeline-remark-list">
+      <p class="timeline-remark-title">上级留言</p>
       ${remarks
         .map(
           (remark) => `
@@ -1108,6 +1969,64 @@ function renderTimelineRemarkRows(remarks) {
         .join("")}
     </div>
   `;
+}
+
+async function createProjectRemark(projectId) {
+  const normalizedProjectId = String(projectId || "").trim();
+  if (!normalizedProjectId) {
+    return;
+  }
+
+  const project = state.bootstrap?.projects?.find((item) => item.id === normalizedProjectId) || null;
+  if (!project) {
+    showToast("未找到对应项目", "error");
+    return;
+  }
+
+  const content = window.prompt(`请输入给“${project.hospital?.name || "当前项目"}”的留言内容`, "");
+  if (content === null) {
+    return;
+  }
+
+  const trimmedContent = content.trim();
+  if (!trimmedContent) {
+    showToast("留言内容不能为空", "warn");
+    return;
+  }
+
+  setBusy(true);
+  showToast("正在提交留言", "busy");
+  try {
+    const response = await fetch(`/api/projects/${encodeURIComponent(normalizedProjectId)}/remarks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: trimmedContent }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+
+    state.bootstrap = payload.bootstrap;
+    state.selectedProjectId = normalizedProjectId;
+    state.activeRemarkId = payload.remark?.id || "";
+    ensureSelection();
+    renderAll();
+
+    requestAnimationFrame(() => {
+      const selectorId = escapeSelectorValue(state.activeRemarkId);
+      const target = selectorId ? document.querySelector(`[data-remark-id="${selectorId}"]`) : null;
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+
+    showToast("留言已提交", "ready");
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "留言提交失败", "error");
+  } finally {
+    setBusy(false);
+  }
 }
 
 function findRemarkFromBootstrap(remarkId) {
@@ -1242,7 +2161,9 @@ function focusNextProjectRemark(projectId) {
   }
 
   state.selectedProjectId = normalizedProjectId;
+  state.ledgerSubTab = "detail";
   persistSelection();
+  persistLedgerSubTab();
 
   const remarks = project.remarks || [];
   const total = remarks.length;
@@ -1289,26 +2210,257 @@ function renderTaskBoard() {
     .join("");
 }
 
+function normalizeInsightSubTab(rawValue) {
+  const value = String(rawValue || "").trim().toLowerCase();
+  if (value === "recent" || value === "management" || value === "summary") {
+    return value;
+  }
+  return "summary";
+}
+
 function renderInsights() {
-  const { dashboard, signals } = state.bootstrap;
-  elements.insightPanel.innerHTML = `
+  const { dashboard, signals, management } = state.bootstrap;
+  const canManageUsers = Boolean(
+    management?.canManageUsers || normalizeUserRole(state.bootstrap?.currentUser?.role) === "manager",
+  );
+  const activeInsightSubTab = normalizeInsightSubTab(state.insightSubTab);
+  state.insightSubTab = activeInsightSubTab;
+  if (activeInsightSubTab === "management" && canManageUsers && !state.backups.loaded && !state.backups.busy) {
+    void loadBackups(false);
+  }
+
+  const subTabs = [
+    { id: "summary", label: "管理汇总" },
+    { id: "recent", label: "最近动态" },
+    { id: "management", label: "三级管理" },
+  ];
+
+  const summaryContent = `
     <section class="insight-section">
-      <h3>阶段分布</h3>
-      ${dashboard.stageDistribution.map((item) => renderBarRow(item.label, item.value, dashboard.totalProjects)).join("")}
+      <h3>管理汇总</h3>
+      <p class="section-copy">按阶段分布与高频问题汇总当前项目状态。</p>
+      <section class="insight-sub-section">
+        <h4>阶段分布</h4>
+        ${dashboard.stageDistribution.map((item) => renderBarRow(item.label, item.value, dashboard.totalProjects)).join("")}
+      </section>
+      <section class="insight-sub-section">
+        <h4>高频问题</h4>
+        <div class="token-row">${renderTagList(dashboard.issueDistribution.map((item) => `${item.label} ${item.value}`))}</div>
+      </section>
     </section>
-    <section class="insight-section">
-      <h3>高频问题</h3>
-      <div class="token-row">${renderTagList(dashboard.issueDistribution.map((item) => `${item.label} ${item.value}`))}</div>
-    </section>
+  `;
+
+  const recentUpdates = signals?.recentUpdates || [];
+  const recentContent = `
     <section class="insight-section">
       <h3>最近动态</h3>
-      ${(signals.recentUpdates || []).map((update) => `
+      <p class="section-copy">按最近纪要查看医院推进情况，可直接进入对应医院台账详情。</p>
+      ${
+        recentUpdates.length
+          ? recentUpdates
+              .map(
+                (update) => `
         <article class="insight-note">
-          <strong>${escapeHtml(update.departmentName)}</strong>
+          <div class="insight-note-head">
+            <div class="insight-note-copy">
+              <strong>${escapeHtml(update.departmentName)}</strong>
+              <span class="insight-note-hospital">${escapeHtml(resolveUpdateHospitalName(update))}</span>
+            </div>
+            <button class="chip insight-note-enter" type="button" data-focus-project="${escapeHtml(update.projectId)}">进入</button>
+          </div>
           <p>${escapeHtml(update.feedbackSummary)}</p>
+          <div class="insight-note-meta">
+            <span>${escapeHtml(update.visitDate || formatDate(update.createdAt))}</span>
+          </div>
         </article>
-      `).join("")}
+      `,
+              )
+              .join("")
+          : '<p class="empty-copy">暂无最近动态</p>'
+      }
     </section>
+  `;
+
+  const managementContent = `
+    <section class="insight-section">
+      <h3>三级管理</h3>
+      <div class="management-level-grid">
+        ${(management?.levels || []).map((level) => `
+          <article class="management-level-card">
+            <span>${escapeHtml(level.name)}</span>
+            <strong>${Number(level.count) || 0}</strong>
+          </article>
+        `).join("")}
+      </div>
+      <div class="management-user-list">
+        ${
+          (management?.visibleUsers || []).length
+            ? management.visibleUsers
+                .map((user) => renderManagementUserItem(user, canManageUsers))
+                .join("")
+            : '<p class="empty-copy">暂无可见成员</p>'
+        }
+      </div>
+      ${renderBackupPanel(canManageUsers)}
+    </section>
+  `;
+
+  let subTabContent = summaryContent;
+  if (activeInsightSubTab === "recent") {
+    subTabContent = recentContent;
+  } else if (activeInsightSubTab === "management") {
+    subTabContent = managementContent;
+  }
+
+  elements.insightPanel.innerHTML = `
+    <div class="insight-subtab-bar" role="tablist" aria-label="汇总子导航">
+      ${subTabs
+        .map(
+          (tab) => `
+        <button
+          class="chip insight-subtab-button${tab.id === activeInsightSubTab ? " is-active" : ""}"
+          type="button"
+          role="tab"
+          data-insight-subtab="${tab.id}"
+          aria-selected="${tab.id === activeInsightSubTab ? "true" : "false"}"
+        >${escapeHtml(tab.label)}</button>
+      `,
+        )
+        .join("")}
+    </div>
+    ${subTabContent}
+  `;
+}
+
+function normalizeUserRole(rawRole) {
+  const role = String(rawRole || "").trim().toLowerCase();
+  if (
+    role === "manager" ||
+    role === "regional_manager" ||
+    role === "district_manager" ||
+    role === "director" ||
+    role === "vp"
+  ) {
+    return "manager";
+  }
+  if (role === "supervisor") {
+    return "supervisor";
+  }
+  return "specialist";
+}
+
+function isCurrentUserManager() {
+  return normalizeUserRole(state.bootstrap?.currentUser?.role) === "manager";
+}
+
+function canCurrentUserLeaveProjectRemarks() {
+  const role = normalizeUserRole(state.bootstrap?.currentUser?.role);
+  return role === "manager" || role === "supervisor";
+}
+
+function renderBackupPanel(canManageUsers) {
+  if (!canManageUsers) {
+    return "";
+  }
+  const backups = state.backups.list || [];
+  const maxBackups = state.backups.maxBackups || 30;
+  const scheduler = state.backups.scheduler || {};
+  const scheduleText = "每日 02:00 自动备份";
+  const lastRunText = scheduler.lastRunAt ? formatDateTime(scheduler.lastRunAt) : "--";
+  const nextRunText = scheduler.nextRunAt ? formatDateTime(scheduler.nextRunAt) : "--";
+  const actionDisabled = state.backups.busy || state.busy || state.auth.busy;
+
+  return `
+    <section class="backup-panel">
+      <div class="backup-panel-head">
+        <div>
+          <h4>数据备份</h4>
+          <p class="backup-copy">${scheduleText}，最多保留 ${maxBackups} 份（当前 ${backups.length} 份）。</p>
+          <p class="backup-meta">上次执行：${lastRunText} · 下次执行：${nextRunText}</p>
+        </div>
+        <button class="chip" type="button" data-backup-action="create" ${actionDisabled ? "disabled" : ""}>立即备份</button>
+      </div>
+      ${
+        state.backups.error
+          ? `<p class="backup-error">${escapeHtml(state.backups.error)}</p>`
+          : ""
+      }
+      <div class="backup-list">
+        ${
+          backups.length
+            ? backups
+                .map(
+                  (item) => `
+              <article class="backup-item">
+                <div class="backup-item-main">
+                  <strong>${formatDateTime(item.createdAt)}</strong>
+                  <span>${item.trigger === "auto" ? "自动备份" : "手动备份"} · ${formatBackupSize(item.sizeBytes)}</span>
+                </div>
+                <button
+                  class="chip"
+                  type="button"
+                  data-backup-action="restore"
+                  data-backup-id="${escapeHtml(item.id)}"
+                  ${actionDisabled ? "disabled" : ""}
+                >恢复</button>
+              </article>
+            `,
+                )
+                .join("")
+            : `<p class="empty-copy">${state.backups.busy ? "备份列表加载中…" : "暂无备份记录"}</p>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function formatBackupSize(bytes) {
+  const size = Number(bytes) || 0;
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function renderManagementUserItem(user, canManageUsers) {
+  const safeUserId = escapeHtml(user.id || "");
+  const roleName = escapeHtml(user.roleName || user.role || "--");
+  const regionName = escapeHtml(user.regionName || "--");
+  const regions = getAvailableRegions();
+  if (!canManageUsers || !regions.length) {
+    return `
+      <article class="management-user-item">
+        <div>
+          <strong>${escapeHtml(user.name)}</strong>
+          <span>${roleName}</span>
+        </div>
+        <span>${regionName}</span>
+      </article>
+    `;
+  }
+
+  const options = regions
+    .map((region) => {
+      const regionId = String(region.id || "");
+      const selected = regionId === String(user.regionId || "") ? " selected" : "";
+      return `<option value="${escapeHtml(regionId)}"${selected}>${escapeHtml(region.name || regionId || "--")}</option>`;
+    })
+    .join("");
+
+  return `
+    <article class="management-user-item">
+      <div>
+        <strong>${escapeHtml(user.name)}</strong>
+        <span>${roleName}</span>
+      </div>
+      <div class="management-user-actions">
+        <select data-management-region-select="${safeUserId}">${options}</select>
+        <button class="chip" type="button" data-management-action="save-region" data-user-id="${safeUserId}">保存区域</button>
+      </div>
+    </article>
   `;
 }
 
@@ -1408,6 +2560,9 @@ function setBusy(isBusy) {
   if (elements.aiFollowupButton) {
     elements.aiFollowupButton.disabled = isBusy || state.followup.busy;
   }
+  if (elements.historyInfoButton) {
+    elements.historyInfoButton.disabled = isBusy || state.followup.busy || state.historyInfo.busy;
+  }
   if (elements.followupDialogSubmitButton) {
     elements.followupDialogSubmitButton.disabled = isBusy || state.followup.busy;
   }
@@ -1417,8 +2572,54 @@ function setBusy(isBusy) {
   if (elements.followupDialogCancelButton) {
     elements.followupDialogCancelButton.disabled = isBusy || state.followup.busy;
   }
+  if (elements.historyInfoDialogCloseButton) {
+    elements.historyInfoDialogCloseButton.disabled = isBusy || state.historyInfo.busy;
+  }
+  if (elements.historyInfoDialogRefreshButton) {
+    elements.historyInfoDialogRefreshButton.disabled = isBusy || state.historyInfo.busy;
+  }
+  if (elements.logoutButton) {
+    elements.logoutButton.disabled = isBusy || !state.authToken || state.auth.busy;
+  }
+  if (elements.authLoginSubmitButton) {
+    elements.authLoginSubmitButton.disabled = isBusy || state.auth.busy;
+  }
+  if (elements.authRegisterSubmitButton) {
+    elements.authRegisterSubmitButton.disabled = isBusy || state.auth.busy;
+  }
   renderFollowupDialog();
+  renderHistoryInfoDialog();
   renderIntakeSubmitButton();
+  renderAuthState();
+}
+
+function resolveUpdateHospitalName(update) {
+  const directName = String(update?.hospitalName || "").trim();
+  if (directName) {
+    return directName;
+  }
+  const projectId = String(update?.projectId || "").trim();
+  const project = state.bootstrap?.projects?.find((item) => item.id === projectId) || null;
+  return project?.hospital?.name || "未关联医院";
+}
+
+function openProjectLedgerDetail(projectId) {
+  const normalizedProjectId = String(projectId || "").trim();
+  if (!normalizedProjectId) {
+    return;
+  }
+
+  state.selectedProjectId = normalizedProjectId;
+  state.activeTab = "ledger";
+  state.ledgerSubTab = "detail";
+  state.activeRemarkId = "";
+  clearSupplementContext();
+  persistSelection();
+  persistActiveTab();
+  persistLedgerSubTab();
+  resetFollowupState();
+  resetHistoryInfoState();
+  renderAll();
 }
 
 function persistSelection() {
@@ -1427,6 +2628,276 @@ function persistSelection() {
 
 function persistActiveTab() {
   localStorage.setItem(ACTIVE_TAB_KEY, state.activeTab || "entry");
+}
+
+function persistInsightSubTab() {
+  localStorage.setItem(INSIGHT_SUBTAB_KEY, normalizeInsightSubTab(state.insightSubTab));
+}
+
+function persistLedgerSubTab() {
+  localStorage.setItem(LEDGER_SUBTAB_KEY, normalizeLedgerSubTab(state.ledgerSubTab));
+}
+
+function renderSessionBar() {
+  const currentUser = state.bootstrap?.currentUser || null;
+  if (!currentUser || !state.authToken) {
+    elements.sessionUserName.textContent = "未登录";
+    elements.sessionUserRole.textContent = "请先登录后继续使用";
+    elements.logoutButton.disabled = true;
+    return;
+  }
+  elements.sessionUserName.textContent = currentUser.name || "未命名用户";
+  const roleText = currentUser.roleName || currentUser.role || "--";
+  elements.sessionUserRole.textContent = `${roleText} · ${currentUser.regionName || "--"}`;
+  elements.logoutButton.disabled = state.busy || state.auth.busy;
+}
+
+function getAvailableRegions() {
+  const fromBootstrap = state.bootstrap?.lookups?.regions;
+  if (Array.isArray(fromBootstrap) && fromBootstrap.length) {
+    return fromBootstrap;
+  }
+  if (Array.isArray(state.authOptions.regions) && state.authOptions.regions.length) {
+    return state.authOptions.regions;
+  }
+  return [];
+}
+
+function renderAuthRegionOptions() {
+  if (!elements.authRegisterRegionSelect) {
+    return;
+  }
+  const regions = getAvailableRegions();
+  const previousValue = String(elements.authRegisterRegionSelect.value || "").trim();
+  if (!regions.length) {
+    elements.authRegisterRegionSelect.innerHTML = "";
+    elements.authRegisterRegionSelect.disabled = true;
+    return;
+  }
+
+  elements.authRegisterRegionSelect.innerHTML = regions
+    .map(
+      (region) =>
+        `<option value="${escapeHtml(region.id || "")}">${escapeHtml(region.name || region.id || "--")}</option>`,
+    )
+    .join("");
+
+  const nextValue = regions.some((region) => String(region.id || "") === previousValue)
+    ? previousValue
+    : String(regions[0]?.id || "");
+  elements.authRegisterRegionSelect.value = nextValue;
+  elements.authRegisterRegionSelect.disabled = state.busy || state.auth.busy;
+}
+
+function renderAuthState() {
+  const showAuthDialog = state.auth.dialogOpen;
+  const isLoginMode = state.auth.mode === "login";
+  elements.authDialog.hidden = !showAuthDialog;
+  elements.authLoginForm.hidden = !isLoginMode;
+  elements.authRegisterForm.hidden = isLoginMode;
+  elements.authModeLoginButton.classList.toggle("is-active", isLoginMode);
+  elements.authModeRegisterButton.classList.toggle("is-active", !isLoginMode);
+  elements.authModeLoginButton.disabled = state.auth.busy;
+  elements.authModeRegisterButton.disabled = state.auth.busy;
+  elements.authDialogCloseButton.disabled = state.auth.busy;
+  renderAuthRegionOptions();
+  elements.authLogoutInsideButton.hidden = !state.authToken;
+  elements.authLogoutInsideButton.disabled = state.auth.busy || !state.authToken;
+  if (elements.authDialogTitle) {
+    elements.authDialogTitle.textContent = isLoginMode ? "账号登录" : "账号注册";
+  }
+  if (elements.authDialogCopy) {
+    elements.authDialogCopy.textContent = isLoginMode
+      ? "请输入账号和密码登录系统。"
+      : "创建新账号后自动登录，支持三级角色：经理、主管、专员。";
+  }
+  if (elements.authFeedback) {
+    const message = String(state.auth.feedback?.message || "").trim();
+    if (!message) {
+      elements.authFeedback.hidden = true;
+      elements.authFeedback.textContent = "";
+      elements.authFeedback.className = "auth-feedback";
+    } else {
+      elements.authFeedback.hidden = false;
+      elements.authFeedback.textContent = message;
+      const tone = String(state.auth.feedback?.tone || "");
+      elements.authFeedback.className = "auth-feedback";
+      if (tone) {
+        elements.authFeedback.classList.add(`is-${tone}`);
+      }
+    }
+  }
+  if (elements.appShell) {
+    elements.appShell.classList.toggle("is-auth-locked", showAuthDialog);
+  }
+}
+
+function switchAuthMode(mode) {
+  if (state.auth.busy) {
+    return;
+  }
+  state.auth.mode = mode === "register" ? "register" : "login";
+  clearAuthFeedback();
+  renderAuthState();
+}
+
+function openAuthDialog(mode = "login", options = {}) {
+  state.auth.mode = mode === "register" ? "register" : "login";
+  state.auth.dialogOpen = true;
+  if (!options.preserveFeedback) {
+    clearAuthFeedback();
+  }
+  renderAuthState();
+}
+
+function closeAuthDialog() {
+  state.auth.dialogOpen = false;
+  clearAuthFeedback();
+  renderAuthState();
+}
+
+function setAuthBusy(isBusy) {
+  state.auth.busy = isBusy;
+  renderAuthState();
+  setBusy(state.busy);
+}
+
+function setAuthFeedback(message, tone = "warn") {
+  state.auth.feedback = {
+    tone: String(tone || ""),
+    message: String(message || "").trim(),
+  };
+  renderAuthState();
+}
+
+function clearAuthFeedback() {
+  state.auth.feedback = { tone: "", message: "" };
+}
+
+async function submitLogin() {
+  if (state.auth.busy) {
+    return;
+  }
+  const account = String(elements.authLoginAccountInput.value || "").trim();
+  const password = String(elements.authLoginPasswordInput.value || "").trim();
+  if (!account || !password) {
+    setAuthFeedback("请输入账号和密码。", "warn");
+    return;
+  }
+
+  setAuthBusy(true);
+  setAuthFeedback("正在登录，请稍候…", "busy");
+  try {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account, password }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    state.authToken = payload.token || "";
+    localStorage.setItem(AUTH_TOKEN_KEY, state.authToken);
+    state.bootstrap = payload.bootstrap || null;
+    ensureSelection();
+    renderAll();
+    elements.authLoginPasswordInput.value = "";
+    if (payload.bootstrap?.health) {
+      applyHealthState(payload.bootstrap.health);
+    }
+    setAuthFeedback("登录成功，正在进入系统…", "ready");
+    closeAuthDialog();
+    showToast("登录成功", "ready");
+  } catch (error) {
+    setAuthFeedback(error instanceof Error ? error.message : "登录失败，请重试。", "error");
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function submitRegister() {
+  if (state.auth.busy) {
+    return;
+  }
+  const name = String(elements.authRegisterNameInput.value || "").trim();
+  const account = String(elements.authRegisterAccountInput.value || "").trim();
+  const password = String(elements.authRegisterPasswordInput.value || "").trim();
+  const role = String(elements.authRegisterRoleSelect.value || "specialist").trim();
+  const regionId = String(elements.authRegisterRegionSelect.value || "").trim();
+  if (!name || !account || !password) {
+    setAuthFeedback("请完整填写注册信息。", "warn");
+    return;
+  }
+  if (!regionId) {
+    setAuthFeedback("请选择所属区域。", "warn");
+    return;
+  }
+
+  setAuthBusy(true);
+  setAuthFeedback("正在注册，请稍候…", "busy");
+  try {
+    const response = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, account, password, role, regionId }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    state.authToken = payload.token || "";
+    localStorage.setItem(AUTH_TOKEN_KEY, state.authToken);
+    state.bootstrap = payload.bootstrap || null;
+    ensureSelection();
+    renderAll();
+    elements.authRegisterPasswordInput.value = "";
+    if (payload.bootstrap?.health) {
+      applyHealthState(payload.bootstrap.health);
+    }
+    setAuthFeedback("注册成功，正在进入系统…", "ready");
+    closeAuthDialog();
+    showToast("注册并登录成功", "ready");
+  } catch (error) {
+    setAuthFeedback(error instanceof Error ? error.message : "注册失败，请重试。", "error");
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function logout() {
+  if (!state.authToken || state.auth.busy || state.busy) {
+    return;
+  }
+  setAuthBusy(true);
+  try {
+    const response = await fetch("/api/auth/logout", { method: "POST" });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    handleUnauthorized("已退出登录，请重新登录。");
+    showToast("已退出登录", "ready");
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "退出登录失败", "error");
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function handleUnauthorized(message = "登录已失效，请重新登录。") {
+  state.authToken = "";
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  state.bootstrap = null;
+  state.lastResult = null;
+  state.intakePreviewFingerprint = "";
+  clearSupplementContext();
+  resetFollowupState();
+  resetHistoryInfoState();
+  resetBackupState();
+  renderSessionBar();
+  setAuthFeedback(message, "warn");
+  openAuthDialog("login", { preserveFeedback: true });
 }
 
 function showToast(message, tone = "ready") {
@@ -1460,7 +2931,11 @@ function formatDateTime(value) {
   if (!value) {
     return "--";
   }
-  return new Date(value).toLocaleString("zh-CN", {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "--";
+  }
+  return parsed.toLocaleString("zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

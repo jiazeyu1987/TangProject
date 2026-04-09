@@ -1,0 +1,68 @@
+- generic [ref=e2]:
+  - banner [ref=e21]:
+    - generic [ref=e22]:
+      - strong [ref=e23]: 李伟
+      - generic [ref=e24]: 专员 · 华东
+    - button "退出登录" [ref=e25] [cursor=pointer]
+  - main [ref=e26]:
+    - article [ref=e74]:
+      - generic [ref=e75]:
+        - tablist "台账子导航" [ref=e76]:
+          - tab "Ledger 医院项目台账" [selected] [ref=e77] [cursor=pointer]:
+            - generic [ref=e78]: Ledger
+            - generic [ref=e79]: 医院项目台账
+          - tab "Project Detail 项目详情视图" [ref=e80] [cursor=pointer]:
+            - generic [ref=e81]: Project Detail
+            - generic [ref=e82]: 项目详情视图
+        - paragraph [ref=e83]: 按医院项目集中查看当前阶段、任务状态、问题标签与最新推进摘要。
+      - tabpanel "Ledger 医院项目台账" [ref=e84]:
+        - button "杭州市第二人民医院 杭州 · 科室接触 high 麻醉科仍在等待采购流程确认，对经济性材料提出更高要求。 采购流程 临床价值 科室支持 留言 00/00 待办 1 逾期 1 停滞 22 天" [ref=e85] [cursor=pointer]:
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - heading "杭州市第二人民医院" [level=3] [ref=e88]
+              - paragraph [ref=e89]: 杭州 · 科室接触
+            - generic [ref=e90]: high
+          - paragraph [ref=e91]: 麻醉科仍在等待采购流程确认，对经济性材料提出更高要求。
+          - generic [ref=e92]:
+            - generic [ref=e93]: 采购流程
+            - generic [ref=e94]: 临床价值
+            - generic [ref=e95]: 科室支持
+          - generic [ref=e96]:
+            - generic "点击顺序定位到对应留言条目" [ref=e97]: 留言 00/00
+            - generic [ref=e98]: 待办 1
+            - generic [ref=e99]: 逾期 1
+            - generic [ref=e100]: 停滞 22 天
+        - button "上海市第一人民医院 上海 · 试用评估 high 疼痛科认可临床效果，但对收费路径和培训安排仍有顾虑。 收费 培训 留言 03/06 待办 1 逾期 1 最近跟进 04/02" [ref=e101] [cursor=pointer]:
+          - generic [ref=e102]:
+            - generic [ref=e103]:
+              - heading "上海市第一人民医院" [level=3] [ref=e104]
+              - paragraph [ref=e105]: 上海 · 试用评估
+            - generic [ref=e106]: high
+          - paragraph [ref=e107]: 疼痛科认可临床效果，但对收费路径和培训安排仍有顾虑。
+          - generic [ref=e108]:
+            - generic [ref=e109]: 收费
+            - generic [ref=e110]: 培训
+          - generic [ref=e111]:
+            - generic "点击顺序定位到对应留言条目" [ref=e112]: 留言 03/06
+            - generic [ref=e113]: 待办 1
+            - generic [ref=e114]: 逾期 1
+            - generic [ref=e115]: 最近跟进 04/02
+        - button "测试医院 · 目标建档 normal 新建医院项目，待录入首次纪要。 无问题标签 留言 00/00 待办 0 逾期 0 最近跟进 04/09" [ref=e116] [cursor=pointer]:
+          - generic [ref=e117]:
+            - generic [ref=e118]:
+              - heading "测试医院" [level=3] [ref=e119]
+              - paragraph [ref=e120]: · 目标建档
+            - generic [ref=e121]: normal
+          - paragraph [ref=e122]: 新建医院项目，待录入首次纪要。
+          - generic [ref=e124]: 无问题标签
+          - generic [ref=e125]:
+            - generic "点击顺序定位到对应留言条目" [ref=e126]: 留言 00/00
+            - generic [ref=e127]: 待办 0
+            - generic [ref=e128]: 逾期 0
+            - generic [ref=e129]: 最近跟进 04/09
+  - navigation "主导航" [ref=e66]:
+    - button "录入" [ref=e67] [cursor=pointer]
+    - button "信号" [ref=e68] [cursor=pointer]
+    - button "台账" [active] [ref=e69] [cursor=pointer]
+    - button "任务" [ref=e70] [cursor=pointer]
+    - button "汇总" [ref=e71] [cursor=pointer]

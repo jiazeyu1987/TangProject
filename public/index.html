@@ -10,10 +10,18 @@
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260409-8" />
   </head>
   <body>
-    <div class="app-shell">
+    <div id="appShell" class="app-shell">
+      <header class="session-bar">
+        <div class="session-meta">
+          <strong id="sessionUserName">未登录</strong>
+          <span id="sessionUserRole">请先登录后继续使用</span>
+        </div>
+        <button id="logoutButton" class="chip" type="button" disabled>退出登录</button>
+      </header>
+
       <main class="tab-panels">
         <section class="tab-panel" data-panel="entry">
           <article class="panel-card">
@@ -67,6 +75,7 @@
               <div class="form-foot">
                 <p class="hint">建议记录完整业务信息，以便系统准确生成项目更新与任务动作。</p>
                 <div class="form-actions">
+                  <button id="historyInfoButton" class="chip ai-followup-button" type="button">历史信息</button>
                   <button id="aiFollowupButton" class="chip ai-followup-button" type="button">AI追问</button>
                   <button id="submitButton" class="primary-button" type="submit">生成纪要</button>
                 </div>
@@ -94,24 +103,34 @@
           <div class="panel-grid panel-grid-ledger">
             <article class="panel-card">
               <div class="section-head">
-                <div>
-                  <p class="section-eyebrow">Ledger</p>
-                  <h2>医院项目台账</h2>
+                <div class="ledger-subtab-bar" role="tablist" aria-label="台账子导航">
+                  <button
+                    id="ledgerListTab"
+                    class="chip ledger-subtab-button"
+                    type="button"
+                    role="tab"
+                    data-ledger-subtab="list"
+                    aria-controls="projectList"
+                  >
+                    <span class="section-eyebrow">Ledger</span>
+                    <span class="ledger-subtab-title">医院项目台账</span>
+                  </button>
+                  <button
+                    id="ledgerDetailTab"
+                    class="chip ledger-subtab-button"
+                    type="button"
+                    role="tab"
+                    data-ledger-subtab="detail"
+                    aria-controls="projectDetail"
+                  >
+                    <span class="section-eyebrow">Project Detail</span>
+                    <span class="ledger-subtab-title">项目详情视图</span>
+                  </button>
                 </div>
-                <p class="section-copy">按医院项目集中查看当前阶段、任务状态、问题标签与最新推进摘要。</p>
+                <p id="ledgerSubtabCopy" class="section-copy"></p>
               </div>
-              <div id="projectList" class="project-list"></div>
-            </article>
-
-            <article class="panel-card">
-              <div class="section-head">
-                <div>
-                  <p class="section-eyebrow">Project Detail</p>
-                  <h2>项目详情视图</h2>
-                </div>
-                <p class="section-copy">查看单个医院项目的关键联系人、历史更新与当前推进计划。</p>
-              </div>
-              <div id="projectDetail" class="project-detail"></div>
+              <div id="projectList" class="project-list" role="tabpanel" aria-labelledby="ledgerListTab"></div>
+              <div id="projectDetail" class="project-detail" role="tabpanel" aria-labelledby="ledgerDetailTab" hidden></div>
             </article>
           </div>
         </section>
@@ -193,6 +212,83 @@
       </div>
     </div>
 
-    <script type="module" src="/app.js"></script>
+    <div id="historyInfoDialog" class="modal-backdrop" hidden>
+      <div class="modal-card modal-card-history-info" role="dialog" aria-modal="true" aria-labelledby="historyInfoDialogTitle">
+        <div class="modal-head">
+          <h3 id="historyInfoDialogTitle">历史信息</h3>
+          <button id="historyInfoDialogCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
+        </div>
+        <p class="modal-copy">可查看历史问题与回答，包含提交人、提交时间和提交参数。点击“基于此继续追问”可在当前纪要下继续生成追问。</p>
+        <div class="modal-actions history-info-actions">
+          <button id="historyInfoDialogRefreshButton" class="chip" type="button">刷新历史信息</button>
+        </div>
+        <div id="historyInfoDialogList" class="history-info-list"></div>
+      </div>
+    </div>
+
+    <div id="authDialog" class="modal-backdrop" hidden>
+      <div class="modal-card modal-card-auth" role="dialog" aria-modal="true" aria-labelledby="authDialogTitle">
+        <div class="modal-head">
+          <h3 id="authDialogTitle">账号登录</h3>
+          <button id="authDialogCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
+        </div>
+        <p id="authDialogCopy" class="modal-copy">请输入账号和密码登录系统。</p>
+        <p id="authFeedback" class="auth-feedback" hidden></p>
+
+        <div class="auth-mode-switch">
+          <button id="authModeLoginButton" class="chip is-active" type="button">已有账号</button>
+          <button id="authModeRegisterButton" class="chip" type="button">新用户注册</button>
+        </div>
+
+        <form id="authLoginForm" class="modal-form">
+          <label>
+            <span>账号</span>
+            <input id="authLoginAccountInput" type="text" maxlength="40" autocomplete="username" required />
+          </label>
+          <label>
+            <span>密码</span>
+            <input id="authLoginPasswordInput" type="password" maxlength="120" autocomplete="current-password" required />
+          </label>
+          <div class="modal-actions">
+            <button id="authLoginSubmitButton" class="primary-button" type="submit">立即登录</button>
+          </div>
+        </form>
+
+        <form id="authRegisterForm" class="modal-form" hidden>
+          <label>
+            <span>姓名</span>
+            <input id="authRegisterNameInput" type="text" maxlength="40" autocomplete="name" required />
+          </label>
+          <label>
+            <span>账号（字母/数字/._-）</span>
+            <input id="authRegisterAccountInput" type="text" maxlength="40" autocomplete="username" required />
+          </label>
+          <label>
+            <span>密码（至少6位）</span>
+            <input id="authRegisterPasswordInput" type="password" maxlength="120" autocomplete="new-password" required />
+          </label>
+          <label>
+            <span>角色</span>
+            <select id="authRegisterRoleSelect" required>
+              <option value="specialist" selected>专员</option>
+              <option value="supervisor">主管</option>
+              <option value="manager">经理</option>
+            </select>
+          </label>
+          <label>
+            <span>所属区域</span>
+            <select id="authRegisterRegionSelect" required></select>
+          </label>
+          <div class="modal-actions">
+            <button id="authRegisterSubmitButton" class="primary-button" type="submit">注册并登录</button>
+          </div>
+        </form>
+        <div class="auth-footer-actions">
+          <button id="authLogoutInsideButton" class="chip" type="button" hidden>退出当前账号</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/app.js?v=20260409-8"></script>
   </body>
 </html>
