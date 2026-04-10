@@ -11,9 +11,18 @@ const elements = {
   sessionUserRole: document.querySelector("#sessionUserRole"),
   logoutButton: document.querySelector("#logoutButton"),
   tabBar: document.querySelector("#tabBar"),
+  entryCard: document.querySelector("#entryCard"),
+  entryEyebrow: document.querySelector("#entryEyebrow"),
+  entryTitle: document.querySelector("#entryTitle"),
+  entryCopy: document.querySelector("#entryCopy"),
+  replySourceCard: document.querySelector("#replySourceCard"),
+  replySourceTitle: document.querySelector("#replySourceTitle"),
+  replySourceMeta: document.querySelector("#replySourceMeta"),
+  replySourceText: document.querySelector("#replySourceText"),
   intakeForm: document.querySelector("#intakeForm"),
   projectSelect: document.querySelector("#projectSelect"),
   visitDatePreset: document.querySelector("#visitDatePreset"),
+  visitDateLabel: document.querySelector("#visitDateLabel"),
   projectSearchWrap: document.querySelector("#projectSearchWrap"),
   projectSearchInput: document.querySelector("#projectSearchInput"),
   projectAddButton: document.querySelector("#projectAddButton"),
@@ -26,6 +35,9 @@ const elements = {
   newHospitalCityInput: document.querySelector("#newHospitalCityInput"),
   newProjectSubmitButton: document.querySelector("#newProjectSubmitButton"),
   noteInput: document.querySelector("#noteInput"),
+  noteLabel: document.querySelector("#noteLabel"),
+  entryHint: document.querySelector("#entryHint"),
+  supplementButton: document.querySelector("#supplementButton"),
   submitButton: document.querySelector("#submitButton"),
   intakeResult: document.querySelector("#intakeResult"),
   signalPanel: document.querySelector("#signalPanel"),
@@ -41,6 +53,14 @@ const elements = {
   followupDialogCancelButton: document.querySelector("#followupDialogCancelButton"),
   followupDialogQuestionList: document.querySelector("#followupDialogQuestionList"),
   followupDialogSubmitButton: document.querySelector("#followupDialogSubmitButton"),
+  supplementDialog: document.querySelector("#supplementDialog"),
+  supplementDialogForm: document.querySelector("#supplementDialogForm"),
+  supplementDialogTitle: document.querySelector("#supplementDialogTitle"),
+  supplementDialogCopy: document.querySelector("#supplementDialogCopy"),
+  supplementDialogCloseButton: document.querySelector("#supplementDialogCloseButton"),
+  supplementDialogCancelButton: document.querySelector("#supplementDialogCancelButton"),
+  supplementDialogTextarea: document.querySelector("#supplementDialogTextarea"),
+  supplementDialogSubmitButton: document.querySelector("#supplementDialogSubmitButton"),
   historyInfoDialog: document.querySelector("#historyInfoDialog"),
   historyInfoDialogCloseButton: document.querySelector("#historyInfoDialogCloseButton"),
   historyInfoDialogRefreshButton: document.querySelector("#historyInfoDialogRefreshButton"),
@@ -97,6 +117,11 @@ const state = {
     sourceText: "",
     sourceDate: "",
     sourceDepartment: "",
+    savedText: "",
+    draftText: "",
+    savedAt: "",
+    dialogOpen: false,
+    syncedReplyText: "",
     replySynced: false,
   },
   lastResult: null,
@@ -106,7 +131,17 @@ const state = {
     loaded: false,
     error: "",
     list: [],
+    availableDates: [],
+    selectedDate: "",
     maxBackups: 30,
+    policy: {
+      schedule: {
+        frequency: "daily",
+        hour: 2,
+        minute: 0,
+        weekday: 1,
+      },
+    },
     scheduler: {
       running: false,
       lastRunAt: "",
@@ -129,12 +164,34 @@ const state = {
     projectId: "",
     sessions: [],
   },
+  projectDetailTaskListExpandedProjectId: "",
 };
 
 const VISIT_DATE_OFFSETS = {
   today: 0,
   yesterday: 1,
   day_before_yesterday: 2,
+};
+
+const ENTRY_MODE_COPY = {
+  default: {
+    eyebrow: "ENTRY",
+    title: "纪要录入",
+    copy: "录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议",
+    visitDateLabel: "拜访日期",
+    noteLabel: "原始推进记录",
+    notePlaceholder: "请描述本次医院推进情况，例如：拜访科室、关键接触人、反馈意见、阻塞点、下一步计划及是否需要管理支持",
+    hint: "建议记录完整业务信息，以便系统准确生成项目更新与任务动作",
+  },
+  reply: {
+    eyebrow: "ENTRY",
+    title: "纪要录入（回复）",
+    copy: "围绕指定留言补充回复信息，系统会先同步原始回复记录，再继续生成结构化纪要",
+    visitDateLabel: "回复日期",
+    noteLabel: "原始回复记录",
+    notePlaceholder: "请填写对该条留言的回复记录，例如：沟通对象、处理结果、最新结论和后续动作",
+    hint: "建议补全留言处理过程，以便系统准确生成后续纪要与任务动作",
+  },
 };
 
 const nativeFetch = window.fetch.bind(window);
@@ -204,7 +261,33 @@ document.addEventListener("click", (event) => {
 
 elements.intakeForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await submitIntake();
+  await generateIntakePreviewFromForm();
+});
+
+elements.intakeResult.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-intake-action]");
+  if (!button || state.busy) {
+    return;
+  }
+
+  const action = String(button.dataset.intakeAction || "");
+  if (action === "supplement") {
+    openSupplementDialog();
+    return;
+  }
+  if (action === "toggle-review-item") {
+    const reviewSection = String(button.dataset.intakeReviewSection || "");
+    const reviewItemId = String(button.dataset.intakeReviewId || "");
+    toggleIntakeReviewItem(reviewSection, reviewItemId);
+    return;
+  }
+  if (action === "submit") {
+    await commitIntake();
+  }
+});
+
+elements.supplementButton?.addEventListener("click", () => {
+  openSupplementDialog();
 });
 
 elements.visitDatePreset.addEventListener("change", () => {
@@ -213,8 +296,35 @@ elements.visitDatePreset.addEventListener("change", () => {
 });
 
 elements.noteInput.addEventListener("input", () => {
+  if (state.supplement.remarkId) {
+    const rawReply = getVisibleReplyText();
+    state.supplement.replySynced = Boolean(rawReply) && rawReply === state.supplement.syncedReplyText;
+  }
   invalidateIntakePreview();
   renderIntakeSubmitButton();
+});
+
+elements.supplementDialogForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  saveSupplementDraft();
+});
+
+elements.supplementDialogCloseButton.addEventListener("click", () => {
+  closeSupplementDialog();
+});
+
+elements.supplementDialogCancelButton.addEventListener("click", () => {
+  closeSupplementDialog();
+});
+
+elements.supplementDialogTextarea.addEventListener("input", () => {
+  state.supplement.draftText = elements.supplementDialogTextarea.value;
+});
+
+elements.supplementDialog.addEventListener("click", (event) => {
+  if (event.target === elements.supplementDialog) {
+    closeSupplementDialog();
+  }
 });
 
 elements.projectSearchInput.addEventListener("input", () => {
@@ -254,6 +364,9 @@ document.addEventListener("keydown", (event) => {
   }
   if (state.projectModalOpen) {
     closeProjectModal();
+  }
+  if (state.supplement.dialogOpen) {
+    closeSupplementDialog();
   }
   if (state.followup.dialogOpen) {
     closeFollowupDialog();
@@ -328,7 +441,7 @@ elements.logoutButton.addEventListener("click", async () => {
 
 elements.authDialogCloseButton.addEventListener("click", () => {
   if (!state.authToken) {
-    setAuthFeedback("请先登录后继续使用系统。", "warn");
+    setAuthFeedback("请先登录后继续使用系统", "warn");
     return;
   }
   closeAuthDialog();
@@ -339,7 +452,7 @@ elements.authDialog.addEventListener("click", (event) => {
     return;
   }
   if (!state.authToken) {
-    setAuthFeedback("请先登录后继续使用系统。", "warn");
+    setAuthFeedback("请先登录后继续使用系统", "warn");
     return;
   }
   closeAuthDialog();
@@ -408,6 +521,21 @@ elements.projectList.addEventListener("click", (event) => {
 });
 
 elements.projectDetail.addEventListener("click", async (event) => {
+  const taskToggleButton = event.target.closest("button[data-project-task-toggle][data-project-id]");
+  if (taskToggleButton) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const projectId = String(taskToggleButton.dataset.projectId || "");
+    if (!projectId) {
+      return;
+    }
+    state.projectDetailTaskListExpandedProjectId =
+      state.projectDetailTaskListExpandedProjectId === projectId ? "" : projectId;
+    renderProjectDetail();
+    return;
+  }
+
   const actionButton = event.target.closest("button[data-remark-action][data-remark-id]");
   if (actionButton) {
     event.preventDefault();
@@ -468,7 +596,7 @@ elements.insightPanel.addEventListener("click", async (event) => {
       state.insightSubTab = nextTab;
       persistInsightSubTab();
       renderInsights();
-      if (nextTab === "management" && isCurrentUserManager()) {
+      if (nextTab === "management" && isCurrentUserBackupAdmin()) {
         await loadBackups(false);
       }
     }
@@ -487,17 +615,23 @@ elements.insightPanel.addEventListener("click", async (event) => {
     return;
   }
 
-  const restoreBackupButton = event.target.closest("button[data-backup-action='restore'][data-backup-id]");
+  const saveBackupScheduleButton = event.target.closest("button[data-backup-action='save-schedule']");
+  if (saveBackupScheduleButton) {
+    await saveBackupSchedule();
+    return;
+  }
+
+  const restoreBackupButton = event.target.closest("button[data-backup-action='restore-date']");
   if (restoreBackupButton) {
-    const backupId = String(restoreBackupButton.dataset.backupId || "").trim();
-    if (!backupId) {
+    const backupDate = String(state.backups.selectedDate || "").trim();
+    if (!backupDate) {
       return;
     }
-    const confirmed = window.confirm("确认从该备份恢复数据吗？恢复后所有用户会被强制下线。");
-    if (!confirmed) {
+    const confirmedRestore = window.confirm(`确认恢复 ${backupDate} 的最新备份吗？恢复后所有用户会被强制下线。`);
+    if (!confirmedRestore) {
       return;
     }
-    await restoreBackupById(backupId);
+    await restoreBackupByDate(backupDate);
     return;
   }
 
@@ -516,6 +650,26 @@ elements.insightPanel.addEventListener("click", async (event) => {
     return;
   }
   await updateUserRegion(userId, regionId);
+});
+
+elements.insightPanel.addEventListener("change", (event) => {
+  const dateSelect = event.target.closest("select[data-backup-date-select]");
+  if (dateSelect) {
+    state.backups.selectedDate = String(dateSelect.value || "").trim();
+    renderInsights();
+    return;
+  }
+
+  const frequencySelect = event.target.closest("select[data-backup-frequency]");
+  if (!frequencySelect) {
+    return;
+  }
+  const weekdaySelect = elements.insightPanel.querySelector("select[data-backup-weekday]");
+  if (!weekdaySelect) {
+    return;
+  }
+  weekdaySelect.disabled =
+    state.backups.busy || state.busy || state.auth.busy || String(frequencySelect.value || "") !== "weekly";
 });
 
 async function boot() {
@@ -678,21 +832,210 @@ function buildFollowupAnswerSignature() {
     .join("|");
 }
 
+function getVisibleReplyText() {
+  return String(elements.noteInput.value || "").trim();
+}
+
+function buildReplyModeIntakeNote(rawReply, visitDate) {
+  const replyText = String(rawReply || "").trim();
+  if (!replyText) {
+    return "";
+  }
+
+  const normalizedVisitDate = String(visitDate || "").trim() || state.supplement.sourceDate || "--";
+  const departmentName = String(state.supplement.sourceDepartment || "").trim() || "未填写";
+  const sourceText = String(state.supplement.sourceText || "").trim() || "未找到原始留言内容";
+  return [
+    "【留言回复纪要】",
+    `关联日期：${normalizedVisitDate}`,
+    `关联科室：${departmentName}`,
+    `上级留言：${sourceText}`,
+    "回复内容：",
+    replyText,
+  ].join("\n");
+}
+
+function getSavedSupplementText() {
+  return String(state.supplement.savedText || "").trim();
+}
+
+function buildSupplementedIntakeNote(baseNote, supplementText) {
+  const normalizedBase = String(baseNote || "").trim();
+  const normalizedSupplement = String(supplementText || "").trim();
+  if (!normalizedSupplement) {
+    return normalizedBase;
+  }
+  if (!normalizedBase) {
+    return [
+      "【补充编辑】",
+      normalizedSupplement,
+    ].join("\n");
+  }
+  return [
+    normalizedBase,
+    "【补充编辑】",
+    normalizedSupplement,
+  ].join("\n\n");
+}
+
 function getCurrentIntakeContext() {
+  const projectId = elements.projectSelect.value;
+  const visitDate = resolveVisitDate();
+  const rawNote = getVisibleReplyText();
+  const baseNote = state.supplement.remarkId ? buildReplyModeIntakeNote(rawNote, visitDate) : rawNote;
+  const supplementText = getSavedSupplementText();
+  const note = buildSupplementedIntakeNote(baseNote, supplementText);
   return {
-    projectId: elements.projectSelect.value,
-    note: elements.noteInput.value.trim(),
-    visitDate: resolveVisitDate(),
+    projectId,
+    rawNote,
+    baseNote,
+    supplementText,
+    note,
+    visitDate,
   };
 }
 
-function invalidateIntakePreview() {
+function invalidateIntakePreview(options = {}) {
+  const { preserveResult = false } = options;
   if (!state.intakePreviewFingerprint) {
+    if (!preserveResult) {
+      state.lastResult = null;
+    }
     return;
   }
   state.intakePreviewFingerprint = "";
-  state.lastResult = null;
+  if (!preserveResult) {
+    state.lastResult = null;
+  }
   renderIntakeResult();
+}
+
+function buildIntakeReviewState(extraction = {}) {
+  const nextActions = Array.isArray(extraction.nextActions) ? extraction.nextActions : [];
+  return {
+    nextStep: {
+      cancelled: false,
+    },
+    nextActions: nextActions.map((_, index) => ({
+      cancelled: false,
+      itemId: `next-action-${index}`,
+    })),
+  };
+}
+
+function cloneIntakeReviewState(reviewState) {
+  if (!reviewState) {
+    return null;
+  }
+
+  return {
+    nextStep: {
+      cancelled: Boolean(reviewState.nextStep?.cancelled),
+    },
+    nextActions: Array.isArray(reviewState.nextActions)
+      ? reviewState.nextActions.map((item, index) => ({
+          cancelled: Boolean(item?.cancelled),
+          itemId: String(item?.itemId || `next-action-${index}`),
+        }))
+      : [],
+  };
+}
+
+function ensureIntakeReviewState(result) {
+  if (!result?.extraction) {
+    return null;
+  }
+
+  if (!result.reviewState) {
+    result.reviewState = buildIntakeReviewState(result.extraction);
+  }
+
+  const nextActions = Array.isArray(result.extraction.nextActions) ? result.extraction.nextActions : [];
+  if (!Array.isArray(result.reviewState.nextActions) || result.reviewState.nextActions.length !== nextActions.length) {
+    result.reviewState = buildIntakeReviewState(result.extraction);
+    return result.reviewState;
+  }
+
+  if (!result.reviewState.nextStep) {
+    result.reviewState.nextStep = { cancelled: false };
+  }
+
+  result.reviewState.nextActions = result.reviewState.nextActions.map((item, index) => ({
+    cancelled: Boolean(item?.cancelled),
+    itemId: String(item?.itemId || `next-action-${index}`),
+  }));
+
+  return result.reviewState;
+}
+
+function renderIntakeReviewItem({ label, title, meta, cancelled, section, itemId }) {
+  return `
+    <li class="result-review-item ${cancelled ? "is-cancelled" : ""}" data-intake-review-section="${section}" data-intake-review-id="${itemId}">
+      <div class="result-review-item-main">
+        <div class="result-review-item-head">
+          <span class="result-review-item-label">${escapeHtml(label)}</span>
+          <span class="result-review-item-status ${cancelled ? "is-cancelled" : ""}">${cancelled ? "已取消" : "待审阅"}</span>
+        </div>
+        <strong>${escapeHtml(title || "未填写")}</strong>
+        ${meta ? `<p class="result-review-item-meta">${escapeHtml(meta)}</p>` : ""}
+      </div>
+      <button class="chip result-review-toggle" type="button" data-intake-action="toggle-review-item" data-intake-review-section="${section}" data-intake-review-id="${itemId}">
+        ${cancelled ? "恢复" : "取消"}
+      </button>
+    </li>
+  `;
+}
+
+function toggleIntakeReviewItem(section, itemId) {
+  const reviewState = ensureIntakeReviewState(state.lastResult);
+  if (!reviewState) {
+    return;
+  }
+
+  if (section === "next-step") {
+    reviewState.nextStep.cancelled = !reviewState.nextStep.cancelled;
+    renderIntakeResult();
+    return;
+  }
+
+  if (section !== "next-action") {
+    return;
+  }
+
+  const nextAction = reviewState.nextActions.find((item) => item.itemId === itemId);
+  if (!nextAction) {
+    return;
+  }
+
+  nextAction.cancelled = !nextAction.cancelled;
+  renderIntakeResult();
+}
+
+function buildReviewedIntakeSnapshot() {
+  const reviewState = ensureIntakeReviewState(state.lastResult);
+  if (!state.lastResult?.extraction || !reviewState) {
+    return null;
+  }
+
+  return {
+    extraction: {
+      department: state.lastResult.extraction.department,
+      contacts: Array.isArray(state.lastResult.extraction.contacts)
+        ? state.lastResult.extraction.contacts.map((item) => ({ ...item }))
+        : [],
+      feedbackSummary: state.lastResult.extraction.feedbackSummary,
+      blockers: state.lastResult.extraction.blockers,
+      opportunities: state.lastResult.extraction.opportunities,
+      issues: Array.isArray(state.lastResult.extraction.issues) ? [...state.lastResult.extraction.issues] : [],
+      nextStep: state.lastResult.extraction.nextStep,
+      nextActions: Array.isArray(state.lastResult.extraction.nextActions)
+        ? state.lastResult.extraction.nextActions.map((item) => ({ ...item }))
+        : [],
+      stageAfterUpdate: state.lastResult.extraction.stageAfterUpdate,
+      managerAttentionNeeded: Boolean(state.lastResult.extraction.managerAttentionNeeded),
+    },
+    reviewState: cloneIntakeReviewState(reviewState),
+  };
 }
 
 function renderIntakeSubmitButton() {
@@ -700,19 +1043,20 @@ function renderIntakeSubmitButton() {
     return;
   }
 
-  const { projectId, note, visitDate } = getCurrentIntakeContext();
+  const { projectId, rawNote, note, visitDate } = getCurrentIntakeContext();
   const previewReady = isPreviewReadyForCurrentInput({ projectId, note, visitDate });
   const isSupplementMode = Boolean(state.supplement.remarkId);
-  const hasAnsweredFollowup = state.followup.history.some((item) => item.answer?.content);
-  if (previewReady) {
-    elements.submitButton.textContent = isSupplementMode ? "提交补充纪要" : "提交纪要";
-  } else if (isSupplementMode) {
-    elements.submitButton.textContent = "生成补充纪要";
-  } else if (hasAnsweredFollowup) {
-    elements.submitButton.textContent = "再次生成纪要";
-  } else {
-    elements.submitButton.textContent = "生成纪要";
-  }
+  const hasGeneratedOnce = Boolean(state.lastResult);
+  const hasInput = Boolean(projectId && rawNote);
+  const useRegenerateLabel = hasGeneratedOnce;
+  elements.submitButton.textContent = useRegenerateLabel
+    ? isSupplementMode
+      ? "再次生成回复纪要"
+      : "再次生成纪要"
+    : isSupplementMode
+      ? "生成回复纪要"
+      : "生成纪要";
+  elements.submitButton.disabled = state.busy || state.followup.busy || !hasInput;
 
   if (elements.aiFollowupButton) {
     const hasFollowupSession = Boolean(state.followup.sessionId);
@@ -720,7 +1064,7 @@ function renderIntakeSubmitButton() {
       !state.busy &&
       !state.followup.busy &&
       !state.followup.dialogOpen &&
-      Boolean(projectId && note) &&
+      Boolean(projectId && rawNote) &&
       (previewReady || hasFollowupSession)
     );
   }
@@ -731,6 +1075,14 @@ function renderIntakeSubmitButton() {
       !state.historyInfo.busy &&
       Boolean(projectId)
     );
+  }
+
+  const resultSubmitButton = elements.intakeResult?.querySelector("[data-intake-action='submit']");
+  if (resultSubmitButton) {
+    resultSubmitButton.disabled = !(previewReady && !state.busy && !state.followup.busy);
+  }
+  if (elements.supplementButton) {
+    elements.supplementButton.disabled = state.busy || state.followup.busy;
   }
 }
 
@@ -762,7 +1114,7 @@ async function generateIntakePreview({ projectId, note, visitDate, fingerprint }
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
 
-    state.lastResult = payload;
+    state.lastResult = { ...payload, reviewState: buildIntakeReviewState(payload.extraction) };
     state.intakePreviewFingerprint = fingerprint;
     renderIntakeResult();
     renderIntakeSubmitButton();
@@ -774,17 +1126,10 @@ async function generateIntakePreview({ projectId, note, visitDate, fingerprint }
   }
 }
 
-async function submitIntake() {
-  const { projectId, note, visitDate } = getCurrentIntakeContext();
+async function generateIntakePreviewFromForm() {
+  const { projectId, rawNote, note, visitDate } = getCurrentIntakeContext();
 
-  if (!projectId || !note || state.busy) {
-    return;
-  }
-
-  try {
-    await ensureSupplementRemarkReply(note);
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : "留言回复失败", "error");
+  if (!projectId || !rawNote || state.busy || state.followup.busy) {
     return;
   }
 
@@ -795,15 +1140,39 @@ async function submitIntake() {
     return;
   }
 
+  await generateIntakePreview({ projectId, note, visitDate, fingerprint });
+}
+
+async function commitIntake() {
+  const { projectId, rawNote, note, visitDate } = getCurrentIntakeContext();
+
+  if (!projectId || !rawNote || state.busy || state.followup.busy) {
+    return;
+  }
+
+  const previewReady = isPreviewReadyForCurrentInput({ projectId, note, visitDate });
+  if (!previewReady) {
+    showToast("请先生成纪要，再提交", "warn");
+    return;
+  }
+
   setBusy(true);
   showToast("正在提交纪要", "busy");
 
   try {
+    await ensureSupplementRemarkReply(rawNote);
+
+    const reviewedSnapshot = buildReviewedIntakeSnapshot();
+    if (!reviewedSnapshot) {
+      throw new Error("Reviewed intake snapshot is required before submit.");
+    }
+
     const body = {
       projectId,
       note,
       visitDate,
       followupSessionId: state.followup.sessionId || undefined,
+      reviewedSnapshot,
       submitScenario: buildFollowupScenario("submit"),
     };
     const response = await fetch("/api/intake", {
@@ -817,7 +1186,6 @@ async function submitIntake() {
     }
 
     state.bootstrap = payload.bootstrap;
-    state.lastResult = payload;
     state.intakePreviewFingerprint = "";
     state.selectedProjectId = payload.project.id;
     clearSupplementContext();
@@ -835,9 +1203,9 @@ async function submitIntake() {
 }
 
 async function openFollowupDialogByGeneratingQuestions(options = {}) {
-  const { projectId, note, visitDate } = getCurrentIntakeContext();
+  const { projectId, rawNote, note, visitDate } = getCurrentIntakeContext();
   const historySessionId = String(options?.historySessionId || "").trim();
-  if (!projectId || !note || state.busy || state.followup.busy) {
+  if (!projectId || !rawNote || state.busy || state.followup.busy) {
     return;
   }
 
@@ -882,7 +1250,7 @@ async function openFollowupDialogByGeneratingQuestions(options = {}) {
     );
     openFollowupDialog();
     renderIntakeSubmitButton();
-    showToast("已生成 1 个 AI追问", "ready");
+    showToast("已生成 1 条 AI追问", "ready");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "AI追问生成失败", "error");
   } finally {
@@ -993,7 +1361,7 @@ function renderHistoryInfoDialog() {
 
   const sessions = Array.isArray(state.historyInfo.sessions) ? state.historyInfo.sessions : [];
   if (state.historyInfo.busy && !sessions.length) {
-    elements.historyInfoDialogList.innerHTML = '<p class="empty-copy">历史信息加载中…</p>';
+    elements.historyInfoDialogList.innerHTML = '<p class="empty-copy">历史信息加载中...</p>';
     return;
   }
   if (state.historyInfo.error && !sessions.length) {
@@ -1001,7 +1369,7 @@ function renderHistoryInfoDialog() {
     return;
   }
   if (!sessions.length) {
-    elements.historyInfoDialogList.innerHTML = '<p class="empty-copy">暂无历史信息。</p>';
+    elements.historyInfoDialogList.innerHTML = '<p class="empty-copy">暂无历史信息</p>';
     return;
   }
 
@@ -1042,7 +1410,7 @@ function renderHistoryInfoDialog() {
                 )} · 回答进度：${answerCount}/${totalCount}
               </p>
               <p class="history-meta-line">
-                状态：${session.closedAt ? "已关闭" : "进行中"}${session.closedAt ? `（${escapeHtml(formatDateTime(session.closedAt))}）` : ""}
+                状态：${session.closedAt ? `已关闭（${escapeHtml(formatDateTime(session.closedAt))}）` : "进行中"}
               </p>
             </div>
             <button
@@ -1052,7 +1420,7 @@ function renderHistoryInfoDialog() {
               data-history-session-id="${escapeHtml(session.sessionId)}"
               ${state.historyInfo.busy || state.followup.busy || state.busy ? "disabled" : ""}
             >
-              基于此继续追问
+              基于该会话继续追问
             </button>
           </div>
           <details class="history-params">
@@ -1245,7 +1613,17 @@ function resetBackupState() {
   state.backups.loaded = false;
   state.backups.error = "";
   state.backups.list = [];
+  state.backups.availableDates = [];
+  state.backups.selectedDate = "";
   state.backups.maxBackups = 30;
+  state.backups.policy = {
+    schedule: {
+      frequency: "daily",
+      hour: 2,
+      minute: 0,
+      weekday: 1,
+    },
+  };
   state.backups.scheduler = {
     running: false,
     lastRunAt: "",
@@ -1293,7 +1671,7 @@ function renderFollowupDialog() {
 
   const pendingQuestions = getFollowupPendingQuestions();
   if (!pendingQuestions.length) {
-    elements.followupDialogQuestionList.innerHTML = '<p class="empty-copy">暂无待回答追问，请重新点击 AI追问。</p>';
+    elements.followupDialogQuestionList.innerHTML = '<p class="empty-copy">暂无待回答追问，请重新点击“AI 追问”。</p>';
   } else {
     elements.followupDialogQuestionList.innerHTML = pendingQuestions
       .map((item) => {
@@ -1372,7 +1750,7 @@ async function updateUserRegion(userId, regionId) {
 }
 
 async function loadBackups(forceRefresh = false) {
-  if (!isCurrentUserManager()) {
+  if (!isCurrentUserBackupAdmin()) {
     return;
   }
   if (state.backups.busy) {
@@ -1408,7 +1786,7 @@ async function loadBackups(forceRefresh = false) {
 }
 
 async function createBackupNow() {
-  if (!isCurrentUserManager() || state.backups.busy || state.busy || state.auth.busy) {
+  if (!isCurrentUserBackupAdmin() || state.backups.busy || state.busy || state.auth.busy) {
     return;
   }
 
@@ -1438,8 +1816,50 @@ async function createBackupNow() {
   }
 }
 
-async function restoreBackupById(backupId) {
-  if (!isCurrentUserManager() || !backupId || state.backups.busy || state.busy || state.auth.busy) {
+async function saveBackupSchedule() {
+  if (!isCurrentUserBackupAdmin() || state.backups.busy || state.busy || state.auth.busy) {
+    return;
+  }
+
+  const frequencySelect = elements.insightPanel.querySelector("select[data-backup-frequency]");
+  const timeInput = elements.insightPanel.querySelector("input[data-backup-time]");
+  const weekdaySelect = elements.insightPanel.querySelector("select[data-backup-weekday]");
+  const frequency = String(frequencySelect?.value || "").trim();
+  const timeValue = String(timeInput?.value || "").trim();
+  const [hourText = "", minuteText = ""] = timeValue.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const weekday = Number(weekdaySelect?.value);
+
+  state.backups.busy = true;
+  renderInsights();
+  showToast("正在保存备份计划", "busy");
+  try {
+    const response = await fetch("/api/backups/schedule", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ frequency, hour, minute, weekday }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    applyBackupPayload(payload);
+    state.backups.loaded = true;
+    state.backups.error = "";
+    showToast("备份计划已保存", "ready");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "保存备份计划失败";
+    state.backups.error = message;
+    showToast(message, "error");
+  } finally {
+    state.backups.busy = false;
+    renderInsights();
+  }
+}
+
+async function restoreBackupByDate(backupDate) {
+  if (!isCurrentUserBackupAdmin() || !backupDate || state.backups.busy || state.busy || state.auth.busy) {
     return;
   }
 
@@ -1450,13 +1870,13 @@ async function restoreBackupById(backupId) {
     const response = await fetch("/api/backups/restore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ backupId }),
+      body: JSON.stringify({ backupDate }),
     });
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
-    handleUnauthorized("数据已从备份恢复，请重新登录。");
+    handleUnauthorized("数据已从备份恢复，请重新登录");
     showToast("恢复完成，已退出登录", "ready");
   } catch (error) {
     const message = error instanceof Error ? error.message : "恢复备份失败";
@@ -1471,20 +1891,37 @@ async function restoreBackupById(backupId) {
 function applyBackupPayload(payload) {
   const maxBackups = Number(payload?.policy?.maxBackups);
   state.backups.maxBackups = Number.isFinite(maxBackups) && maxBackups > 0 ? maxBackups : 30;
+  state.backups.policy = {
+    schedule: {
+      frequency: String(payload?.policy?.schedule?.frequency || "daily"),
+      hour: Number(payload?.policy?.schedule?.hour) || 0,
+      minute: Number(payload?.policy?.schedule?.minute) || 0,
+      weekday: Number.isInteger(Number(payload?.policy?.schedule?.weekday))
+        ? Number(payload?.policy?.schedule?.weekday)
+        : 1,
+    },
+  };
   const scheduler = payload?.scheduler || {};
   state.backups.scheduler = {
     running: Boolean(scheduler.running),
     lastRunAt: String(scheduler.lastRunAt || ""),
     nextRunAt: String(scheduler.nextRunAt || ""),
   };
+  state.backups.availableDates = Array.isArray(payload?.availableDates)
+    ? payload.availableDates.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
   const backups = Array.isArray(payload?.backups) ? payload.backups : [];
   state.backups.list = backups.map((item) => ({
     id: String(item?.id || ""),
     fileName: String(item?.fileName || ""),
     trigger: String(item?.trigger || ""),
     createdAt: String(item?.createdAt || ""),
+    date: String(item?.date || ""),
     sizeBytes: Number(item?.sizeBytes) || 0,
   }));
+  if (!state.backups.availableDates.includes(state.backups.selectedDate)) {
+    state.backups.selectedDate = state.backups.availableDates[0] || "";
+  }
 }
 
 function ensureSelection() {
@@ -1511,8 +1948,10 @@ function renderAll() {
   renderTabs();
   renderProjectSearchState();
   renderProjectSelect();
+  renderEntryMode();
   renderIntakeSubmitButton();
   renderIntakeResult();
+  renderSupplementDialog();
   renderFollowupDialog();
   renderHistoryInfoDialog();
   renderSignals();
@@ -1521,6 +1960,63 @@ function renderAll() {
   renderLedgerSubTabs();
   renderTaskBoard();
   renderInsights();
+}
+
+function renderEntryMode() {
+  const isReplyMode = Boolean(state.supplement.remarkId);
+  const copy = isReplyMode ? ENTRY_MODE_COPY.reply : ENTRY_MODE_COPY.default;
+  const selectedProject = getSelectedProject();
+
+  if (elements.entryCard) {
+    elements.entryCard.classList.toggle("is-reply-mode", isReplyMode);
+  }
+  if (elements.entryEyebrow) {
+    elements.entryEyebrow.textContent = copy.eyebrow;
+  }
+  if (elements.entryTitle) {
+    elements.entryTitle.textContent = copy.title;
+  }
+  if (elements.entryCopy) {
+    elements.entryCopy.textContent = copy.copy;
+  }
+  if (elements.visitDateLabel) {
+    elements.visitDateLabel.textContent = copy.visitDateLabel;
+  }
+  if (elements.noteLabel) {
+    elements.noteLabel.textContent = copy.noteLabel;
+  }
+  if (elements.noteInput) {
+    elements.noteInput.placeholder = copy.notePlaceholder;
+  }
+  if (elements.entryHint) {
+    elements.entryHint.textContent = copy.hint;
+  }
+
+  if (!elements.replySourceCard || !elements.replySourceMeta || !elements.replySourceText) {
+    return;
+  }
+
+  elements.replySourceCard.hidden = !isReplyMode;
+  if (!isReplyMode) {
+    elements.replySourceMeta.innerHTML = "";
+    elements.replySourceText.textContent = "";
+    return;
+  }
+
+  const metaTokens = [
+    selectedProject?.hospital?.name ? `医院 · ${selectedProject.hospital.name}` : "",
+    state.supplement.sourceDepartment ? `科室 · ${state.supplement.sourceDepartment}` : "",
+    state.supplement.sourceDate ? `留言日期 · ${state.supplement.sourceDate}` : "",
+  ]
+    .filter(Boolean)
+    .map((item) => `<span>${escapeHtml(item)}</span>`)
+    .join("");
+
+  if (elements.replySourceTitle) {
+    elements.replySourceTitle.textContent = "原始留言记录";
+  }
+  elements.replySourceMeta.innerHTML = metaTokens;
+  elements.replySourceText.textContent = state.supplement.sourceText;
 }
 
 function renderTabs() {
@@ -1562,7 +2058,7 @@ function renderProjectSelect() {
   }
 
   if (!visibleProjects.length) {
-    elements.projectSelect.innerHTML = '<option value="">未找到匹配医院</option>';
+    elements.projectSelect.innerHTML = '<option value="">未找到匹配项目</option>';
     elements.projectSelect.disabled = true;
     if (elements.projectStageText) {
       elements.projectStageText.textContent = "--";
@@ -1587,60 +2083,146 @@ function renderProjectSelect() {
 }
 
 function renderIntakeResult() {
+  const supplementText = getSavedSupplementText();
+  const supplementSavedAt = state.supplement.savedAt ? formatDateTime(state.supplement.savedAt) : "";
+  const hasResult = Boolean(state.lastResult);
+  const previewReady = isPreviewReadyForCurrentInput();
+  const resultStale = hasResult && !previewReady;
   if (!state.lastResult) {
     elements.intakeResult.innerHTML = `
       <div class="result-empty">
         <p>本次结构化结果将在生成后展示于此。</p>
         <ul>
-          <li>系统将通过 Responses API 提取科室、联系人、问题标签、阶段变化和下一步动作</li>
-          <li>如果接口未配置或抽取失败，生成或提交会直接返回错误信息</li>
-          <li>提交完成后，项目台账、任务中心与管理汇总会同步刷新</li>
+          <li>系统将通过 Responses API 提取科室、联系人、问题标签、阶段变化和下一步动作。</li>
+          <li>如接口未配置或提取失败，生成或提交会直接返回错误信息。</li>
+          <li>提交完成后，项目台账、任务中心与管理汇总会同步刷新。</li>
         </ul>
+        ${
+          supplementText
+            ? `
+              <div class="result-supplement">
+                <div class="result-supplement-head-row">
+                  <span class="result-supplement-head">补充编辑</span>
+                  ${supplementSavedAt ? `<small>${escapeHtml(`已保存：${supplementSavedAt}`)}</small>` : ""}
+                </div>
+                <p>${escapeHtml(supplementText)}</p>
+              </div>
+            `
+            : ""
+        }
       </div>
     `;
     return;
   }
 
   const { extraction, extractionSource, extractionWarnings = [] } = state.lastResult;
+  const reviewState = ensureIntakeReviewState(state.lastResult);
+  const nextActions = Array.isArray(extraction.nextActions) ? extraction.nextActions : [];
+  const contacts = Array.isArray(extraction.contacts) ? extraction.contacts : [];
   elements.intakeResult.innerHTML = `
     <div class="result-head">
       <span class="result-badge ${extractionSource === "responses-api" ? "is-responses" : "is-fallback"}">
         ${extractionSource === "responses-api" ? "结构化来源：Responses API" : "结构化来源：未知"}
       </span>
-      <span class="mini-meta">阶段更新：${escapeHtml(extraction.stageAfterUpdate)}</span>
+      ${resultStale ? '<span class="result-badge is-stale">当前结果待重新生成</span>' : ""}
+      <span class="mini-meta">阶段更新：${escapeHtml(extraction.stageAfterUpdate || "--")}</span>
       <span class="mini-meta">管理关注：${extraction.managerAttentionNeeded ? "需要" : "无需"}</span>
     </div>
     <h3>本次结构化摘要</h3>
-    <p class="result-summary">${escapeHtml(extraction.feedbackSummary || "未提取到摘要")}</p>
+    <p class="result-summary">${escapeHtml(extraction.feedbackSummary || "暂无结构化摘要")}</p>
     <div class="result-grid">
       <div>
         <span>科室</span>
         <strong>${escapeHtml(extraction.department || "未识别")}</strong>
       </div>
-      <div>
-        <span>下一步</span>
-        <strong>${escapeHtml(extraction.nextStep || "未填写")}</strong>
-      </div>
     </div>
     <div class="token-row">${renderTagList(extraction.issues)}</div>
     <div class="result-block">
       <span>联系人</span>
-      <p>${escapeHtml(extraction.contacts.map((item) => `${item.name}${item.role ? ` / ${item.role}` : ""}`).join("；") || "未识别")}</p>
+      <p>${escapeHtml(contacts.map((item) => `${item.name}${item.role ? ` / ${item.role}` : ""}`).join("；") || "未识别")}</p>
     </div>
     <div class="result-block">
       <span>阻塞点</span>
-      <p>${escapeHtml(extraction.blockers || "无")}</p>
+      <p>${escapeHtml(extraction.blockers || "暂无")}</p>
     </div>
-    <div class="result-block">
-      <span>待办动作</span>
-      <p>${escapeHtml(extraction.nextActions.map((item) => `${item.title}${item.dueDate ? `（${item.dueDate}）` : ""}`).join("；") || "无")}</p>
-    </div>
+    <section class="result-review-section">
+      <div class="result-review-section-head">
+        <span>下一步</span>
+        <small>可单项审阅</small>
+      </div>
+      ${
+        extraction.nextStep
+          ? `
+            <ul class="result-review-list">
+              ${renderIntakeReviewItem({
+                label: "下一步",
+                title: extraction.nextStep,
+                meta: "取消或恢复后，仍保留在当前预览中。",
+                cancelled: Boolean(reviewState?.nextStep?.cancelled),
+                section: "next-step",
+                itemId: "next-step",
+              })}
+            </ul>
+          `
+          : '<p class="result-review-empty">未提取到下一步计划。</p>'
+      }
+    </section>
+    <section class="result-review-section">
+      <div class="result-review-section-head">
+        <span>待办动作</span>
+        <small>${nextActions.length} 项</small>
+      </div>
+      ${
+        nextActions.length
+          ? `
+            <ul class="result-review-list">
+              ${nextActions
+                .map((item, index) =>
+                  renderIntakeReviewItem({
+                    label: `待办动作 ${index + 1}`,
+                    title: item.title,
+                    meta: item.dueDate ? `截止：${item.dueDate}` : "未填写截止时间",
+                    cancelled: Boolean(reviewState?.nextActions?.[index]?.cancelled),
+                    section: "next-action",
+                    itemId: reviewState?.nextActions?.[index]?.itemId || `next-action-${index}`,
+                  }),
+                )
+                .join("")}
+            </ul>
+          `
+          : '<p class="result-review-empty">未提取到待办动作。</p>'
+      }
+    </section>
     ${
       extractionWarnings.length
         ? `<div class="warning-box">${escapeHtml(extractionWarnings.join(" | "))}</div>`
         : ""
     }
+    ${
+      supplementText
+        ? `
+          <div class="result-supplement">
+            <div class="result-supplement-head-row">
+              <span class="result-supplement-head">补充编辑</span>
+              ${supplementSavedAt ? `<small>${escapeHtml(`已保存：${supplementSavedAt}`)}</small>` : ""}
+            </div>
+            <p>${escapeHtml(supplementText)}</p>
+          </div>
+        `
+        : ""
+    }
+    <div class="result-footer">
+      <p class="result-footer-copy">${
+        resultStale
+          ? "补充内容已保存，当前结果已失效，请先重新生成。"
+          : "结果已生成，提交按钮已下沉到这里。若继续修改原始记录，请先重新生成当前结果。"
+      }</p>
+      <div class="result-footer-actions">
+        <button class="primary-button result-submit-button" type="button" data-intake-action="submit">提交纪要</button>
+      </div>
+    </div>
   `;
+  renderIntakeSubmitButton();
 }
 
 function renderSignals() {
@@ -1731,6 +2313,124 @@ function renderDetailEmptyState(title, copy) {
   `;
 }
 
+function getProjectTaskSortKey(task) {
+  const timeValue = String(task?.dueAt || task?.completedAt || "").trim();
+  if (!timeValue) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const parsed = new Date(timeValue);
+  const timestamp = parsed.getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+}
+
+function getProjectDetailTasks(project) {
+  const tasks = Array.isArray(project?.tasks)
+    ? project.tasks.filter((task) => String(task?.effectiveStatus || "") !== "completed")
+    : [];
+  // Sort by actionable time first, then by stable textual fallbacks so repeated
+  // expand/collapse and rerenders preserve the same order.
+  return tasks.sort((left, right) => {
+    const leftTime = getProjectTaskSortKey(left);
+    const rightTime = getProjectTaskSortKey(right);
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+    const titleDelta = String(left.title || "").localeCompare(String(right.title || ""), "zh-CN");
+    if (titleDelta) {
+      return titleDelta;
+    }
+    return String(left.id || "").localeCompare(String(right.id || ""), "zh-CN");
+  });
+}
+
+function formatProjectTaskTime(task) {
+  if (task?.dueAt) {
+    return `截止 ${formatDate(task.dueAt)}`;
+  }
+  if (task?.completedAt) {
+    return `完成 ${formatDate(task.completedAt)}`;
+  }
+  return "无时间字段";
+}
+
+function formatTaskStatusLabel(status) {
+  const normalized = String(status || "").trim();
+  if (normalized === "overdue") {
+    return "逾期";
+  }
+  if (normalized === "blocked") {
+    return "阻塞";
+  }
+  if (normalized === "in_progress") {
+    return "进行中";
+  }
+  if (normalized === "completed") {
+    return "已完成";
+  }
+  return "待办";
+}
+
+function renderProjectTaskList(project) {
+  const tasks = getProjectDetailTasks(project);
+  if (!tasks.length) {
+    return '<p class="detail-task-empty">当前项目暂无待办任务。</p>';
+  }
+
+  return `
+    <div class="detail-task-list" role="list" aria-label="当前项目任务列表">
+      ${tasks
+        .map(
+          (task) => `
+            <article class="detail-task-item" role="listitem">
+              <div class="detail-task-item-head">
+                <strong>${escapeHtml(task.title || "未命名任务")}</strong>
+                <span class="detail-task-item-status status-${escapeHtml(task.effectiveStatus || "todo")}">${escapeHtml(formatTaskStatusLabel(task.effectiveStatus))}</span>
+              </div>
+              <p class="detail-task-item-copy">${escapeHtml(task.description || "暂无任务说明")}</p>
+              <div class="detail-task-item-meta">
+                <span>${escapeHtml(task.assigneeName || "--")}</span>
+                <span>${escapeHtml(formatProjectTaskTime(task))}</span>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderProjectTaskMetricCard(project) {
+  const expanded = state.projectDetailTaskListExpandedProjectId === project.id;
+  const taskCount = Number(project?.metrics?.openTaskCount || 0);
+
+  return `
+    <article class="detail-metric-card detail-metric-card-expandable">
+      <button
+        class="detail-metric-toggle"
+        type="button"
+        data-project-task-toggle="true"
+        data-project-id="${escapeHtml(project.id)}"
+        aria-expanded="${expanded ? "true" : "false"}"
+        aria-controls="projectDetailTaskList-${escapeHtml(project.id)}"
+      >
+        <span class="detail-metric-toggle-copy">
+          <span>任务状态</span>
+          <strong>${taskCount}个待办</strong>
+        </span>
+        <span class="detail-metric-toggle-icon ${expanded ? "is-expanded" : ""}" aria-hidden="true">▾</span>
+      </button>
+      <small>点击查看当前项目相关任务，按时间顺序显示。</small>
+      <div
+        class="detail-metric-expand-panel"
+        id="projectDetailTaskList-${escapeHtml(project.id)}"
+        ${expanded ? "" : "hidden"}
+      >
+        ${renderProjectTaskList(project)}
+      </div>
+    </article>
+  `;
+}
+
 function renderProjectDetail() {
   const project = getSelectedProject();
   if (!project) {
@@ -1755,17 +2455,10 @@ function renderProjectDetail() {
   const unlinkedRemarks = remarks.filter((remark) => !remark.updateId);
   const regionLine = [project.region?.name, project.hospital?.city, project.hospital?.level].filter(Boolean).join(" · ");
   const nextActionText = project.nextAction || "待补充下一步计划";
-  const taskMeta =
-    project.metrics.overdueTaskCount > 0
-      ? `${project.metrics.overdueTaskCount} 个逾期`
-      : project.metrics.openTaskCount > 0
-        ? "当前均未逾期"
-        : "暂无待办任务";
   const projectHealthText = project.managerAttentionNeeded ? "需管理关注" : "常规推进";
   const progressText = project.isStalled
     ? `停滞 ${project.stalledDays} 天`
     : `最近跟进 ${formatDate(project.lastFollowUpAt)}`;
-
   elements.projectDetail.innerHTML = `
     <section class="detail-overview">
       <article class="detail-hero-card">
@@ -1779,7 +2472,7 @@ function renderProjectDetail() {
             <span class="risk-pill risk-${escapeHtml(project.riskLevel)}">${escapeHtml(formatRiskLevelLabel(project.riskLevel))}</span>
           </div>
         </div>
-        <p class="detail-copy">${escapeHtml(project.latestSummary || "暂无摘要")}</p>
+        <p class="detail-copy">${escapeHtml(project.latestSummary || "暂无推进摘要")}</p>
         <div class="token-row detail-token-row">${renderTagList(project.issueNames)}</div>
       </article>
 
@@ -1796,8 +2489,8 @@ function renderProjectDetail() {
 
     <div class="detail-stats">
       ${renderDetailMetricCard("最近推进", formatDate(project.lastFollowUpAt), updates.length ? `${updates.length} 条更新` : "暂无更新")}
-      ${renderDetailMetricCard("下一步截止", project.nextActionDueAt ? formatDate(project.nextActionDueAt) : "--", project.nextActionDueAt ? "建议按期推进" : "待补充截止时间")}
-      ${renderDetailMetricCard("任务状态", `${project.metrics.openTaskCount} 个待办`, taskMeta)}
+      ${renderDetailMetricCard("下一步截止", project.nextActionDueAt ? formatDate(project.nextActionDueAt) : "--", project.nextActionDueAt ? "请按计划推进" : "尚未设置截止时间")}
+      ${renderProjectTaskMetricCard(project)}
       ${renderDetailMetricCard("上级留言", formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount), remarks.length ? `${remarks.length} 条上级留言` : "暂无上级留言")}
     </div>
 
@@ -1805,7 +2498,7 @@ function renderProjectDetail() {
       <article class="detail-section detail-section-card">
         <div class="detail-section-head">
           <h4>关键联系人</h4>
-          <span>${contacts.length} 位</span>
+          <span>${contacts.length} λ</span>
         </div>
         <div class="contact-list detail-contact-list">
           ${
@@ -1815,13 +2508,13 @@ function renderProjectDetail() {
                     (contact) => `
           <article class="contact-card detail-contact-card">
             <strong>${escapeHtml(contact.name)}</strong>
-            <span>${escapeHtml(contact.roleTitle || "角色未填")}</span>
+            <span>${escapeHtml(contact.roleTitle || "角色未填写")}</span>
             <small>${escapeHtml(contact.departmentName || "未填写科室")}</small>
           </article>
         `,
                   )
                   .join("")
-              : renderDetailEmptyState("暂无关键联系人", "当前项目还没有沉淀关键联系人，可在后续纪要录入后自动补齐。")
+              : renderDetailEmptyState("暂无关键联系人", "当前项目尚未录入关键联系人，后续新增纪要后会自动补充。")
           }
         </div>
       </article>
@@ -1875,7 +2568,7 @@ function renderProjectDetail() {
         `,
                 )
                 .join("")
-            : renderDetailEmptyState("还没有历史时间线", "项目刚建立或还未录入纪要，首条推进记录生成后会在这里沉淀。")
+            : renderDetailEmptyState("还没有历史时间线", "项目刚建立或尚未录入纪要，首条推进记录生成后会在这里沉淀。")
         }
       </div>
       ${
@@ -1917,8 +2610,8 @@ function renderLedgerSubTabs() {
   const detailTabButton = document.querySelector("[data-ledger-subtab='detail']");
   const subtabCopy = document.querySelector("#ledgerSubtabCopy");
   const subtabCopyMap = {
-    list: "按医院项目集中查看当前阶段、任务状态、问题标签与最新推进摘要。",
-    detail: "查看单个医院项目的关键联系人、历史更新、上级留言与当前推进计划。",
+    list: "按医院项目集中查看当前阶段、任务状态、问题标签与最新推进摘要",
+    detail: "查看单个医院项目的关键联系人、历史更新、上级留言与当前推进计划",
   };
 
   for (const button of [listTabButton, detailTabButton]) {
@@ -1951,20 +2644,69 @@ function renderTimelineRemarkRows(remarks) {
       <p class="timeline-remark-title">上级留言</p>
       ${remarks
         .map(
-          (remark) => `
-            <article class="timeline-remark-item ${remark.id === state.activeRemarkId ? "is-active" : ""}" data-remark-id="${remark.id}">
-              <div class="timeline-remark-content">${escapeHtml(`${remark.fromUserName}：${remark.content}`)}</div>
-              <div class="timeline-remark-actions">
-                <button class="timeline-remark-action" type="button" data-remark-action="reply" data-remark-id="${remark.id}">回答</button>
-                ${remark.replyContent ? '<span class="timeline-remark-action is-done">已回复</span>' : ""}
+          (remark) => {
+            const fromUserName = String(remark.fromUserName || "上级").trim();
+            const replyContent = String(remark.replyContent || "").trim();
+            const replyByUserName = String(remark.replyByUserName || "").trim();
+            const readByUserName = String(remark.readByUserName || "").trim();
+            const readAtText = remark.readAt ? formatDateTime(remark.readAt) : "";
+            const remarkMeta = [
+              fromUserName,
+              remark.createdAt ? formatDateTime(remark.createdAt) : "",
+            ]
+              .filter(Boolean)
+              .map((item) => `<span>${escapeHtml(item)}</span>`)
+              .join("");
+            const replyMeta = [
+              replyByUserName ? `回复人：${replyByUserName}` : "已回复",
+            ]
+              .filter(Boolean)
+              .map((item) => `<span>${escapeHtml(item)}</span>`)
+              .join("");
+            const readMetaText = remark.isRead
+              ? [readByUserName ? `已读人：${readByUserName}` : "已读", readAtText].filter(Boolean).join(" · ")
+              : "未读";
+            const actionMarkup = replyContent
+              ? '<span class="timeline-remark-action is-done">已回复，无法再次回复</span>'
+              : `<button class="timeline-remark-action" type="button" data-remark-action="reply" data-remark-id="${remark.id}">回复</button>`;
+            return `
+              <article class="timeline-remark-item ${remark.id === state.activeRemarkId ? "is-active" : ""}" data-remark-id="${remark.id}">
+                <div class="timeline-remark-head">
+                  <div class="timeline-remark-meta">${remarkMeta}</div>
+                  <div class="timeline-remark-state">
+                    <span class="timeline-remark-badge ${replyContent ? "is-replied" : "is-pending"}">${replyContent ? "已回复" : "待回复"}</span>
+                    <span class="timeline-remark-badge ${remark.isRead ? "is-read" : "is-unread"}">${remark.isRead ? "已读" : "未读"}</span>
+                  </div>
+                </div>
+                <div class="timeline-remark-section">
+                  <p class="timeline-remark-label">留言内容</p>
+                  <p class="timeline-remark-content">${escapeHtml(remark.content || "--")}</p>
+                </div>
                 ${
-                  remark.isRead
-                    ? '<span class="timeline-remark-action is-done">已读</span>'
-                    : `<button class="timeline-remark-action" type="button" data-remark-action="read" data-remark-id="${remark.id}">已读</button>`
+                  replyContent
+                    ? `
+                      <div class="remark-reply timeline-remark-reply">
+                        <span>回复记录</span>
+                        <div class="timeline-remark-meta">${replyMeta}</div>
+                        <p>${escapeHtml(replyContent)}</p>
+                      </div>
+                    `
+                    : '<p class="remark-status is-pending">该条留言尚未回复，可从这里进入回复模式。</p>'
                 }
-              </div>
-            </article>
-          `,
+                <div class="timeline-remark-foot">
+                  <small class="timeline-remark-read">${escapeHtml(readMetaText)}</small>
+                  <div class="timeline-remark-actions">
+                    ${actionMarkup}
+                    ${
+                      remark.isRead
+                        ? '<span class="timeline-remark-action is-done">已读</span>'
+                        : `<button class="timeline-remark-action" type="button" data-remark-action="read" data-remark-id="${remark.id}">标记已读</button>`
+                    }
+                  </div>
+                </div>
+              </article>
+            `;
+          },
         )
         .join("")}
     </div>
@@ -2050,19 +2792,12 @@ function clearSupplementContext() {
   state.supplement.sourceText = "";
   state.supplement.sourceDate = "";
   state.supplement.sourceDepartment = "";
+  state.supplement.savedText = "";
+  state.supplement.draftText = "";
+  state.supplement.savedAt = "";
+  state.supplement.dialogOpen = false;
+  state.supplement.syncedReplyText = "";
   state.supplement.replySynced = false;
-}
-
-function buildSupplementNoteTemplate({ remark, update }) {
-  const visitDate = update?.visitDate || formatDate(update?.createdAt) || "--";
-  const departmentName = update?.departmentName || "未填写";
-  return [
-    "【补充纪要】回复上级留言",
-    `关联日期：${visitDate}`,
-    `关联科室：${departmentName}`,
-    `上级留言：${remark.content}`,
-    "回复与处理结果：",
-  ].join("\n");
 }
 
 function startSupplementFromRemark(remarkId) {
@@ -2074,7 +2809,6 @@ function startSupplementFromRemark(remarkId) {
 
   const { project, remark } = matched;
   const update = (project.updates || []).find((item) => item.id === remark.updateId) || null;
-  const nextNote = buildSupplementNoteTemplate({ remark, update });
 
   state.selectedProjectId = project.id;
   state.activeTab = "entry";
@@ -2084,17 +2818,111 @@ function startSupplementFromRemark(remarkId) {
   state.supplement.sourceText = remark.content || "";
   state.supplement.sourceDate = update?.visitDate || "";
   state.supplement.sourceDepartment = update?.departmentName || "";
+  state.supplement.savedText = "";
+  state.supplement.draftText = "";
+  state.supplement.savedAt = "";
+  state.supplement.dialogOpen = false;
+  state.supplement.syncedReplyText = String(remark.replyContent || "").trim();
   state.supplement.replySynced = Boolean(remark.replyContent);
   persistSelection();
   persistActiveTab();
 
   applyVisitDatePresetFromDate(update?.visitDate || "");
-  elements.noteInput.value = nextNote;
+  elements.noteInput.value = String(remark.replyContent || "").trim();
   invalidateIntakePreview();
   resetFollowupState();
   renderAll();
   elements.noteInput.focus();
-  showToast("请补充回复内容，然后生成补充纪要", "ready");
+  showToast("已切换到备注回复模式，请填写回复内容", "ready");
+}
+
+function openSupplementDialog() {
+  if (state.busy || state.followup.busy) {
+    return;
+  }
+  state.supplement.dialogOpen = true;
+  elements.supplementDialog.hidden = false;
+  state.supplement.draftText = getSavedSupplementText();
+  if (elements.supplementDialogTextarea) {
+    elements.supplementDialogTextarea.value = state.supplement.draftText;
+    elements.supplementDialogTextarea.focus();
+    elements.supplementDialogTextarea.select();
+  }
+  renderSupplementDialog();
+}
+
+function closeSupplementDialog(options = {}) {
+  if (!options.force && (state.busy || state.followup.busy)) {
+    return;
+  }
+  state.supplement.dialogOpen = false;
+  if (elements.supplementDialog) {
+    elements.supplementDialog.hidden = true;
+  }
+  renderSupplementDialog();
+}
+
+function saveSupplementDraft() {
+  if (!state.supplement.dialogOpen || state.busy || state.followup.busy) {
+    return;
+  }
+  const draftText = String((elements.supplementDialogTextarea?.value ?? state.supplement.draftText) || "").trim();
+  const previousText = String(state.supplement.savedText || "").trim();
+  const changed = draftText !== previousText;
+  if (changed) {
+    state.supplement.savedText = draftText;
+    state.supplement.savedAt = new Date().toISOString();
+  }
+  state.supplement.dialogOpen = false;
+  if (elements.supplementDialog) {
+    elements.supplementDialog.hidden = true;
+  }
+  if (changed) {
+    invalidateIntakePreview({ preserveResult: true });
+  }
+  renderAll();
+  showToast(
+    changed
+      ? draftText
+        ? "补充内容已保存，请重新生成纪要"
+        : "补充内容已清空，请重新生成纪要"
+      : "补充内容未变化",
+    changed ? "ready" : "info",
+  );
+}
+
+function renderSupplementDialog() {
+  if (!elements.supplementDialog) {
+    return;
+  }
+  elements.supplementDialog.hidden = !state.supplement.dialogOpen;
+  if (!state.supplement.dialogOpen) {
+    return;
+  }
+  const isReplyMode = Boolean(state.supplement.remarkId);
+  if (elements.supplementDialogTitle) {
+    elements.supplementDialogTitle.textContent = isReplyMode ? "补充编辑（回复）" : "补充编辑";
+  }
+  if (elements.supplementDialogCopy) {
+    elements.supplementDialogCopy.textContent = isReplyMode
+      ? "补充内容会并入本次回复纪要的下一次生成。保存后当前回复摘要会失效，需要重新生成"
+      : "补充内容会并入普通纪要的下一次生成。保存后当前结果会失效，需要重新生成";
+  }
+  if (elements.supplementDialogTextarea && elements.supplementDialogTextarea.value !== state.supplement.draftText) {
+    elements.supplementDialogTextarea.value = state.supplement.draftText;
+  }
+  if (elements.supplementDialogSubmitButton) {
+    elements.supplementDialogSubmitButton.disabled = state.busy || state.followup.busy;
+  }
+  if (elements.supplementDialogCancelButton) {
+    elements.supplementDialogCancelButton.disabled = state.busy || state.followup.busy;
+  }
+  if (elements.supplementDialogCloseButton) {
+    elements.supplementDialogCloseButton.disabled = state.busy || state.followup.busy;
+  }
+  if (elements.supplementDialogTextarea) {
+    elements.supplementDialogTextarea.disabled = state.busy || state.followup.busy;
+  }
 }
 
 async function markProjectRemarkAsRead(remarkId) {
@@ -2123,12 +2951,15 @@ async function markProjectRemarkAsRead(remarkId) {
 }
 
 async function ensureSupplementRemarkReply(note) {
-  if (!state.supplement.remarkId || state.supplement.replySynced) {
+  if (!state.supplement.remarkId) {
     return;
   }
   const reply = String(note || "").trim();
   if (!reply) {
-    throw new Error("请先填写回复内容，再生成补充纪要。");
+    throw new Error("请先填写回复内容，再生成回复纪要");
+  }
+  if (state.supplement.replySynced && reply === state.supplement.syncedReplyText) {
+    return;
   }
 
   const response = await fetch(`/api/project-remarks/${state.supplement.remarkId}/reply`, {
@@ -2143,6 +2974,7 @@ async function ensureSupplementRemarkReply(note) {
 
   state.bootstrap = payload.bootstrap;
   state.activeRemarkId = state.supplement.remarkId;
+  state.supplement.syncedReplyText = reply;
   state.supplement.replySynced = true;
   ensureSelection();
   renderAll();
@@ -2223,9 +3055,14 @@ function renderInsights() {
   const canManageUsers = Boolean(
     management?.canManageUsers || normalizeUserRole(state.bootstrap?.currentUser?.role) === "manager",
   );
+  const canManageBackups = Boolean(
+    management?.canManageBackups ||
+      state.bootstrap?.capabilities?.canManageBackups ||
+      state.bootstrap?.currentUser?.isBackupAdmin,
+  );
   const activeInsightSubTab = normalizeInsightSubTab(state.insightSubTab);
   state.insightSubTab = activeInsightSubTab;
-  if (activeInsightSubTab === "management" && canManageUsers && !state.backups.loaded && !state.backups.busy) {
+  if (activeInsightSubTab === "management" && canManageBackups && !state.backups.loaded && !state.backups.busy) {
     void loadBackups(false);
   }
 
@@ -2276,7 +3113,7 @@ function renderInsights() {
       `,
               )
               .join("")
-          : '<p class="empty-copy">暂无最近动态</p>'
+          : '<p class="empty-copy">暂无最近动态。</p>'
       }
     </section>
   `;
@@ -2301,7 +3138,7 @@ function renderInsights() {
             : '<p class="empty-copy">暂无可见成员</p>'
         }
       </div>
-      ${renderBackupPanel(canManageUsers)}
+      ${renderBackupAdminPanel(canManageBackups)}
     </section>
   `;
 
@@ -2353,65 +3190,15 @@ function isCurrentUserManager() {
   return normalizeUserRole(state.bootstrap?.currentUser?.role) === "manager";
 }
 
+function isCurrentUserBackupAdmin() {
+  return Boolean(
+    state.bootstrap?.currentUser?.isBackupAdmin || state.bootstrap?.capabilities?.canManageBackups,
+  );
+}
+
 function canCurrentUserLeaveProjectRemarks() {
   const role = normalizeUserRole(state.bootstrap?.currentUser?.role);
   return role === "manager" || role === "supervisor";
-}
-
-function renderBackupPanel(canManageUsers) {
-  if (!canManageUsers) {
-    return "";
-  }
-  const backups = state.backups.list || [];
-  const maxBackups = state.backups.maxBackups || 30;
-  const scheduler = state.backups.scheduler || {};
-  const scheduleText = "每日 02:00 自动备份";
-  const lastRunText = scheduler.lastRunAt ? formatDateTime(scheduler.lastRunAt) : "--";
-  const nextRunText = scheduler.nextRunAt ? formatDateTime(scheduler.nextRunAt) : "--";
-  const actionDisabled = state.backups.busy || state.busy || state.auth.busy;
-
-  return `
-    <section class="backup-panel">
-      <div class="backup-panel-head">
-        <div>
-          <h4>数据备份</h4>
-          <p class="backup-copy">${scheduleText}，最多保留 ${maxBackups} 份（当前 ${backups.length} 份）。</p>
-          <p class="backup-meta">上次执行：${lastRunText} · 下次执行：${nextRunText}</p>
-        </div>
-        <button class="chip" type="button" data-backup-action="create" ${actionDisabled ? "disabled" : ""}>立即备份</button>
-      </div>
-      ${
-        state.backups.error
-          ? `<p class="backup-error">${escapeHtml(state.backups.error)}</p>`
-          : ""
-      }
-      <div class="backup-list">
-        ${
-          backups.length
-            ? backups
-                .map(
-                  (item) => `
-              <article class="backup-item">
-                <div class="backup-item-main">
-                  <strong>${formatDateTime(item.createdAt)}</strong>
-                  <span>${item.trigger === "auto" ? "自动备份" : "手动备份"} · ${formatBackupSize(item.sizeBytes)}</span>
-                </div>
-                <button
-                  class="chip"
-                  type="button"
-                  data-backup-action="restore"
-                  data-backup-id="${escapeHtml(item.id)}"
-                  ${actionDisabled ? "disabled" : ""}
-                >恢复</button>
-              </article>
-            `,
-                )
-                .join("")
-            : `<p class="empty-copy">${state.backups.busy ? "备份列表加载中…" : "暂无备份记录"}</p>`
-        }
-      </div>
-    </section>
-  `;
 }
 
 function formatBackupSize(bytes) {
@@ -2423,6 +3210,123 @@ function formatBackupSize(bytes) {
     return `${(size / 1024).toFixed(1)} KB`;
   }
   return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function renderBackupAdminPanel(canManageBackups) {
+  if (!canManageBackups) {
+    return "";
+  }
+  const backups = state.backups.list || [];
+  const availableDates = state.backups.availableDates || [];
+  const selectedDate =
+    availableDates.includes(state.backups.selectedDate) ? state.backups.selectedDate : availableDates[0] || "";
+  const backupsForDate = selectedDate ? backups.filter((item) => item.date === selectedDate) : [];
+  const maxBackups = state.backups.maxBackups || 30;
+  const schedule = state.backups.policy?.schedule || {};
+  const scheduler = state.backups.scheduler || {};
+  const scheduleText = formatBackupSchedule(schedule);
+  const lastRunText = scheduler.lastRunAt ? formatDateTime(scheduler.lastRunAt) : "--";
+  const nextRunText = scheduler.nextRunAt ? formatDateTime(scheduler.nextRunAt) : "--";
+  const actionDisabled = state.backups.busy || state.busy || state.auth.busy;
+  const timeValue = `${String(Number(schedule.hour) || 0).padStart(2, "0")}:${String(
+    Number(schedule.minute) || 0,
+  ).padStart(2, "0")}`;
+  const frequency = String(schedule.frequency || "daily");
+  const weekday = Number.isInteger(Number(schedule.weekday)) ? Number(schedule.weekday) : 1;
+  const weekdayOptions = [0, 1, 2, 3, 4, 5, 6]
+    .map(
+      (value) =>
+        `<option value="${value}"${value === weekday ? " selected" : ""}>${escapeHtml(formatWeekday(value))}</option>`,
+    )
+    .join("");
+  const dateOptions = availableDates
+    .map(
+      (value) =>
+        `<option value="${escapeHtml(value)}"${value === selectedDate ? " selected" : ""}>${escapeHtml(value)}</option>`,
+    )
+    .join("");
+
+  return `
+    <section class="backup-panel">
+      <div class="backup-panel-head">
+        <div>
+          <h4>数据备份</h4>
+          <p class="backup-copy">${escapeHtml(scheduleText)}，最多保留 ${maxBackups} 份，当前 ${backups.length} 份。</p>
+          <p class="backup-meta">上次执行：${lastRunText} · 下次执行：${nextRunText}</p>
+        </div>
+        <button class="chip" type="button" data-backup-action="create" ${actionDisabled ? "disabled" : ""}>立即备份</button>
+      </div>
+      ${
+        state.backups.error
+          ? `<p class="backup-error">${escapeHtml(state.backups.error)}</p>`
+          : ""
+      }
+      <div class="backup-schedule-form">
+        <label class="backup-field">
+          <span>备份频率</span>
+          <select data-backup-frequency ${actionDisabled ? "disabled" : ""}>
+            <option value="daily"${frequency === "daily" ? " selected" : ""}>每天</option>
+            <option value="weekly"${frequency === "weekly" ? " selected" : ""}>每周</option>
+          </select>
+        </label>
+        <label class="backup-field">
+          <span>执行时间</span>
+          <input type="time" data-backup-time value="${timeValue}" ${actionDisabled ? "disabled" : ""} />
+        </label>
+        <label class="backup-field">
+          <span>每周执行日</span>
+          <select data-backup-weekday ${actionDisabled || frequency !== "weekly" ? "disabled" : ""}>
+            ${weekdayOptions}
+          </select>
+        </label>
+        <button class="chip" type="button" data-backup-action="save-schedule" ${actionDisabled ? "disabled" : ""}>保存计划</button>
+      </div>
+      <div class="backup-restore-bar">
+        <label class="backup-field">
+          <span>恢复日期</span>
+          <select data-backup-date-select ${actionDisabled || !availableDates.length ? "disabled" : ""}>
+            ${dateOptions || '<option value="">暂无可恢复日期</option>'}
+          </select>
+        </label>
+        <button class="chip" type="button" data-backup-action="restore-date" ${actionDisabled || !selectedDate ? "disabled" : ""}>恢复所选日期最新备份</button>
+      </div>
+      <div class="backup-list">
+        ${
+          backupsForDate.length
+            ? backupsForDate
+                .map(
+                  (item) => `
+              <article class="backup-item">
+                <div class="backup-item-main">
+                  <strong>${formatDateTime(item.createdAt)}</strong>
+                  <span>${item.trigger === "auto" ? "自动备份" : "手动备份"} · ${formatBackupSize(item.sizeBytes)}</span>
+                </div>
+                <span class="backup-item-tag">${escapeHtml(item.fileName)}</span>
+              </article>
+            `,
+                )
+                .join("")
+            : `<p class="empty-copy">${state.backups.busy ? "备份列表加载中..." : "所选日期暂无备份记录"}</p>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function formatBackupSchedule(schedule) {
+  const frequency = String(schedule?.frequency || "daily");
+  const hour = String(Number(schedule?.hour) || 0).padStart(2, "0");
+  const minute = String(Number(schedule?.minute) || 0).padStart(2, "0");
+  if (frequency === "weekly") {
+    return `每周 ${formatWeekday(schedule?.weekday)} ${hour}:${minute} 自动备份`;
+  }
+  return `每天 ${hour}:${minute} 自动备份`;
+}
+
+function formatWeekday(value) {
+  const labels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  const index = Number(value);
+  return labels[index] || "周一";
 }
 
 function renderManagementUserItem(user, canManageUsers) {
@@ -2588,6 +3492,7 @@ function setBusy(isBusy) {
     elements.authRegisterSubmitButton.disabled = isBusy || state.auth.busy;
   }
   renderFollowupDialog();
+  renderSupplementDialog();
   renderHistoryInfoDialog();
   renderIntakeSubmitButton();
   renderAuthState();
@@ -2600,7 +3505,7 @@ function resolveUpdateHospitalName(update) {
   }
   const projectId = String(update?.projectId || "").trim();
   const project = state.bootstrap?.projects?.find((item) => item.id === projectId) || null;
-  return project?.hospital?.name || "未关联医院";
+  return project?.hospital?.name || "未关联医";
 }
 
 function openProjectLedgerDetail(projectId) {
@@ -2641,12 +3546,12 @@ function persistLedgerSubTab() {
 function renderSessionBar() {
   const currentUser = state.bootstrap?.currentUser || null;
   if (!currentUser || !state.authToken) {
-    elements.sessionUserName.textContent = "未登录";
-    elements.sessionUserRole.textContent = "请先登录后继续使用";
+    elements.sessionUserName.textContent = "未登";
+    elements.sessionUserRole.textContent = "请先登录后继续使";
     elements.logoutButton.disabled = true;
     return;
   }
-  elements.sessionUserName.textContent = currentUser.name || "未命名用户";
+  elements.sessionUserName.textContent = currentUser.name || "未命名用";
   const roleText = currentUser.roleName || currentUser.role || "--";
   elements.sessionUserRole.textContent = `${roleText} · ${currentUser.regionName || "--"}`;
   elements.logoutButton.disabled = state.busy || state.auth.busy;
@@ -2708,8 +3613,8 @@ function renderAuthState() {
   }
   if (elements.authDialogCopy) {
     elements.authDialogCopy.textContent = isLoginMode
-      ? "请输入账号和密码登录系统。"
-      : "创建新账号后自动登录，支持三级角色：经理、主管、专员。";
+      ? "请输入账号和密码登录系统"
+      : "创建新账号后自动登录，支持三级角色：经理、主管、专员";
   }
   if (elements.authFeedback) {
     const message = String(state.auth.feedback?.message || "").trim();
@@ -2781,12 +3686,12 @@ async function submitLogin() {
   const account = String(elements.authLoginAccountInput.value || "").trim();
   const password = String(elements.authLoginPasswordInput.value || "").trim();
   if (!account || !password) {
-    setAuthFeedback("请输入账号和密码。", "warn");
+    setAuthFeedback("请输入账号和密码", "warn");
     return;
   }
 
   setAuthBusy(true);
-  setAuthFeedback("正在登录，请稍候…", "busy");
+  setAuthFeedback("正在登录，请稍候", "busy");
   try {
     const response = await fetch("/api/auth/login", {
       method: "POST",
@@ -2806,11 +3711,11 @@ async function submitLogin() {
     if (payload.bootstrap?.health) {
       applyHealthState(payload.bootstrap.health);
     }
-    setAuthFeedback("登录成功，正在进入系统…", "ready");
+    setAuthFeedback("登录成功，正在进入系统", "ready");
     closeAuthDialog();
     showToast("登录成功", "ready");
   } catch (error) {
-    setAuthFeedback(error instanceof Error ? error.message : "登录失败，请重试。", "error");
+    setAuthFeedback(error instanceof Error ? error.message : "登录失败，请重试", "error");
   } finally {
     setAuthBusy(false);
   }
@@ -2826,16 +3731,16 @@ async function submitRegister() {
   const role = String(elements.authRegisterRoleSelect.value || "specialist").trim();
   const regionId = String(elements.authRegisterRegionSelect.value || "").trim();
   if (!name || !account || !password) {
-    setAuthFeedback("请完整填写注册信息。", "warn");
+    setAuthFeedback("请完整填写注册信息", "warn");
     return;
   }
   if (!regionId) {
-    setAuthFeedback("请选择所属区域。", "warn");
+    setAuthFeedback("请选择所属区域", "warn");
     return;
   }
 
   setAuthBusy(true);
-  setAuthFeedback("正在注册，请稍候…", "busy");
+  setAuthFeedback("正在注册，请稍候", "busy");
   try {
     const response = await fetch("/api/auth/register", {
       method: "POST",
@@ -2855,11 +3760,11 @@ async function submitRegister() {
     if (payload.bootstrap?.health) {
       applyHealthState(payload.bootstrap.health);
     }
-    setAuthFeedback("注册成功，正在进入系统…", "ready");
+    setAuthFeedback("注册成功，正在进入系统", "ready");
     closeAuthDialog();
-    showToast("注册并登录成功", "ready");
+    showToast("注册并登录成", "ready");
   } catch (error) {
-    setAuthFeedback(error instanceof Error ? error.message : "注册失败，请重试。", "error");
+    setAuthFeedback(error instanceof Error ? error.message : "注册失败，请重试", "error");
   } finally {
     setAuthBusy(false);
   }
@@ -2876,7 +3781,7 @@ async function logout() {
     if (!response.ok) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
-    handleUnauthorized("已退出登录，请重新登录。");
+    handleUnauthorized("已退出登录，请重新登录");
     showToast("已退出登录", "ready");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "退出登录失败", "error");
@@ -2885,7 +3790,7 @@ async function logout() {
   }
 }
 
-function handleUnauthorized(message = "登录已失效，请重新登录。") {
+function handleUnauthorized(message = "登录已失效，请重新登录") {
   state.authToken = "";
   localStorage.removeItem(AUTH_TOKEN_KEY);
   state.bootstrap = null;
@@ -3002,3 +3907,5 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+

@@ -24,16 +24,27 @@
 
       <main class="tab-panels">
         <section class="tab-panel" data-panel="entry">
-          <article class="panel-card">
+          <article id="entryCard" class="panel-card">
             <div class="section-head">
               <div>
-                <p class="section-eyebrow">Entry</p>
-                <h2>纪要录入</h2>
+                <p id="entryEyebrow" class="section-eyebrow">Entry</p>
+                <h2 id="entryTitle">纪要录入</h2>
               </div>
-              <p class="section-copy">录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议。</p>
+              <p id="entryCopy" class="section-copy">录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议。</p>
             </div>
 
             <form id="intakeForm" class="intake-form">
+              <section id="replySourceCard" class="reply-source-card" hidden aria-live="polite">
+                <div class="reply-source-head">
+                  <div>
+                    <p class="reply-source-eyebrow">Reply Context</p>
+                    <strong id="replySourceTitle">原始留言记录</strong>
+                  </div>
+                  <div id="replySourceMeta" class="reply-source-meta"></div>
+                </div>
+                <p id="replySourceText" class="reply-source-text"></p>
+              </section>
+
               <div class="field-row">
                 <label class="project-field">
                   <div class="field-title-row">
@@ -53,7 +64,7 @@
                   </p>
                 </label>
                 <label>
-                  <span>拜访日期</span>
+                  <span id="visitDateLabel">拜访日期</span>
                   <select id="visitDatePreset" required>
                     <option value="today" selected>今天（默认）</option>
                     <option value="yesterday">昨天</option>
@@ -63,7 +74,7 @@
               </div>
 
               <label>
-                <span>原始推进记录</span>
+                <span id="noteLabel">原始推进记录</span>
                 <textarea
                   id="noteInput"
                   rows="7"
@@ -73,16 +84,17 @@
               </label>
 
               <div class="form-foot">
-                <p class="hint">建议记录完整业务信息，以便系统准确生成项目更新与任务动作。</p>
+                <p id="entryHint" class="hint">建议记录完整业务信息，以便系统准确生成项目更新与任务动作。</p>
                 <div class="form-actions">
                   <button id="historyInfoButton" class="chip ai-followup-button" type="button">历史信息</button>
                   <button id="aiFollowupButton" class="chip ai-followup-button" type="button">AI追问</button>
+                  <button id="supplementButton" class="chip ai-followup-button" type="button">补充编辑</button>
                   <button id="submitButton" class="primary-button" type="submit">生成纪要</button>
                 </div>
               </div>
             </form>
 
-            <div id="intakeResult" class="result-card"></div>
+            <div id="intakeResult" class="result-card" aria-live="polite"></div>
           </article>
         </section>
 
@@ -207,6 +219,26 @@
           <div class="modal-actions">
             <button id="followupDialogCancelButton" class="chip" type="button">取消</button>
             <button id="followupDialogSubmitButton" class="primary-button" type="submit">保存回答</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="supplementDialog" class="modal-backdrop" hidden>
+      <div class="modal-card modal-card-supplement" role="dialog" aria-modal="true" aria-labelledby="supplementDialogTitle">
+        <div class="modal-head">
+          <h3 id="supplementDialogTitle">补充编辑</h3>
+          <button id="supplementDialogCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
+        </div>
+        <p id="supplementDialogCopy" class="modal-copy">补充内容会并入下一次结构化生成，保存后当前结果会失效，需要重新生成。</p>
+        <form id="supplementDialogForm" class="modal-form">
+          <label>
+            <span>补充内容</span>
+            <textarea id="supplementDialogTextarea" rows="6" placeholder="可填写额外背景、补充说明、修正信息或下一步动作。"></textarea>
+          </label>
+          <div class="modal-actions">
+            <button id="supplementDialogCancelButton" class="chip" type="button">取消</button>
+            <button id="supplementDialogSubmitButton" class="primary-button" type="submit">保存补充</button>
           </div>
         </form>
       </div>

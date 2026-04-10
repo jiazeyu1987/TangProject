@@ -29,6 +29,7 @@ const FOLLOWUP_QUESTIONS_RESPONSE_SCHEMA = readJsonFile(FOLLOWUP_QUESTIONS_SCHEM
 const MAX_BACKUP_COUNT = 30;
 const DAILY_BACKUP_HOUR = 2;
 const DAILY_BACKUP_MINUTE = 0;
+const DEFAULT_BACKUP_WEEKDAY = 1;
 const BACKUP_FILE_PREFIX = "store-backup-";
 const BACKUP_FILE_SUFFIX = ".json";
 
@@ -39,6 +40,10 @@ const responsesBaseUrl = normalizeResponsesBaseUrl(
 const responsesModel = process.env.RESPONSES_MODEL?.trim() || "gpt-5.4";
 const responsesApiKey = process.env.OPENAI_API_KEY?.trim() || "";
 const responsesTimeoutMs = toPositiveInteger(process.env.RESPONSES_TIMEOUT_MS, 120000);
+const responsesMaxConcurrentRequests = toPositiveInteger(
+  process.env.RESPONSES_MAX_CONCURRENT_REQUESTS,
+  2,
+);
 const ROLE_DEFINITIONS = {
   manager: { code: "manager", name: "经理", rank: 3 },
   supervisor: { code: "supervisor", name: "主管", rank: 2 },
@@ -46,9 +51,15 @@ const ROLE_DEFINITIONS = {
 };
 const SUPERVISOR_ROLES = new Set(["manager", "supervisor"]);
 const DEFAULT_INITIAL_PASSWORD = process.env.DEFAULT_INITIAL_PASSWORD?.trim() || "123456";
+const BACKUP_ADMIN_ACCOUNT = normalizeAccount(process.env.BACKUP_ADMIN_ACCOUNT) || "backup-admin";
+const BACKUP_ADMIN_NAME = clipText(process.env.BACKUP_ADMIN_NAME?.trim() || "数据备份管理员", 40);
 const PASSWORD_PBKDF2_ITERATIONS = toPositiveInteger(process.env.PASSWORD_PBKDF2_ITERATIONS, 120000);
 const PASSWORD_PBKDF2_KEY_LENGTH = 64;
 const PASSWORD_PBKDF2_DIGEST = "sha512";
+const responsesRequestQueue = [];
+const responsesLimiterState = {
+  activeCount: 0,
+};
 
 let store = loadOrCreateStore();
 const backupSchedulerState = {
@@ -95,6 +106,10 @@ app.post("/api/auth/register", (req, res) => {
   }
   if (!isValidAccount(account)) {
     res.status(400).json({ error: "account format is invalid." });
+    return;
+  }
+  if (account === BACKUP_ADMIN_ACCOUNT) {
+    res.status(400).json({ error: "account is reserved." });
     return;
   }
   if (!password || password.length < 6) {
@@ -219,8 +234,8 @@ app.get("/api/bootstrap", (req, res) => {
 });
 
 app.get("/api/backups", (req, res) => {
-  if (!isManagerUser(req.currentUser)) {
-    res.status(403).json({ error: "Only managers can view backups." });
+  if (!isBackupAdminUser(req.currentUser)) {
+    res.status(403).json({ error: "Only the backup admin can view backups." });
     return;
   }
   try {
@@ -231,13 +246,13 @@ app.get("/api/backups", (req, res) => {
 });
 
 app.post("/api/backups/create", (req, res) => {
-  if (!isManagerUser(req.currentUser)) {
-    res.status(403).json({ error: "Only managers can create backups." });
+  if (!isBackupAdminUser(req.currentUser)) {
+    res.status(403).json({ error: "Only the backup admin can create backups." });
     return;
   }
   try {
     createStoreBackup("manual");
-    pruneBackups(MAX_BACKUP_COUNT);
+    pruneBackups(getBackupMaxCount());
     res.json(buildBackupPayload());
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : "Failed to create backup." });
@@ -245,17 +260,17 @@ app.post("/api/backups/create", (req, res) => {
 });
 
 app.post("/api/backups/restore", (req, res) => {
-  if (!isManagerUser(req.currentUser)) {
-    res.status(403).json({ error: "Only managers can restore backups." });
+  if (!isBackupAdminUser(req.currentUser)) {
+    res.status(403).json({ error: "Only the backup admin can restore backups." });
     return;
   }
-  const backupId = asString(req.body?.backupId);
-  if (!backupId) {
-    res.status(400).json({ error: "backupId is required." });
+  const backupDate = asString(req.body?.backupDate);
+  if (!backupDate) {
+    res.status(400).json({ error: "backupDate is required." });
     return;
   }
   try {
-    const restored = restoreStoreBackup(backupId);
+    const restored = restoreStoreBackupByDate(backupDate);
     res.json({
       ok: true,
       restored,
@@ -263,14 +278,45 @@ app.post("/api/backups/restore", (req, res) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to restore backup.";
-    if (message === "Backup not found.") {
+    if (message === "Backup date not found.") {
       res.status(404).json({ error: message });
       return;
     }
     if (
-      message === "backupId is invalid." ||
+      message === "backupDate is invalid." ||
       message === "Backup JSON is invalid." ||
       message === "Backup store has no users."
+    ) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+app.patch("/api/backups/schedule", (req, res) => {
+  if (!isBackupAdminUser(req.currentUser)) {
+    res.status(403).json({ error: "Only the backup admin can update backup schedule." });
+    return;
+  }
+  try {
+    const schedule = normalizeBackupScheduleInput(req.body);
+    store.backupPolicy = {
+      ...store.backupPolicy,
+      maxBackups: getBackupMaxCount(),
+      schedule,
+    };
+    touchStore();
+    persistStore();
+    scheduleNextBackupRun(new Date());
+    res.json(buildBackupPayload());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update backup schedule.";
+    if (
+      message === "backup frequency is invalid." ||
+      message === "backup hour is invalid." ||
+      message === "backup minute is invalid." ||
+      message === "backup weekday is invalid."
     ) {
       res.status(400).json({ error: message });
       return;
@@ -979,6 +1025,7 @@ app.post("/api/intake", async (req, res) => {
   const note = asString(req.body?.note);
   const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
   const followupSessionId = asString(req.body?.followupSessionId);
+  const reviewedSnapshotBody = req.body?.reviewedSnapshot;
   const submitScenario = parseScenarioPayload(req.body?.submitScenario);
   const project = store.projects.find((item) => item.id === projectId);
 
@@ -989,6 +1036,10 @@ app.post("/api/intake", async (req, res) => {
 
   if (!note) {
     res.status(400).json({ error: "note is required." });
+    return;
+  }
+  if (!reviewedSnapshotBody) {
+    res.status(400).json({ error: "reviewedSnapshot is required." });
     return;
   }
 
@@ -1022,6 +1073,16 @@ app.post("/api/intake", async (req, res) => {
     }
   }
 
+  let reviewedSnapshot;
+  try {
+    reviewedSnapshot = normalizeReviewedIntakeSnapshot(reviewedSnapshotBody);
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "reviewedSnapshot is invalid.",
+    });
+    return;
+  }
+
   try {
     const result = await processIntake({
       project,
@@ -1030,6 +1091,7 @@ app.post("/api/intake", async (req, res) => {
       followupSession,
       submitScenario,
       currentUser: req.currentUser,
+      reviewedSnapshot,
     });
     res.json(result);
   } catch (error) {
@@ -1132,6 +1194,9 @@ function buildBootstrapPayload(currentUser = null) {
     dashboard: buildDashboard(projects, tasks),
     signals: buildSignals(projects, tasks, visibleProjectIds),
     management: buildManagementPayload(resolvedCurrentUser),
+    capabilities: {
+      canManageBackups: isBackupAdminUser(resolvedCurrentUser),
+    },
     projects,
     tasks,
   };
@@ -1139,6 +1204,7 @@ function buildBootstrapPayload(currentUser = null) {
 
 function buildHealthPayload() {
   const health = getResponsesApiHealth();
+  const backupSchedule = getBackupSchedule();
   return {
     ok: health.configured,
     configured: health.configured,
@@ -1146,6 +1212,11 @@ function buildHealthPayload() {
     extractionMode: health.configured ? "responses-api" : "unconfigured",
     model: responsesModel,
     baseUrl: responsesBaseUrl,
+    responsesConcurrency: {
+      maxConcurrentRequests: responsesMaxConcurrentRequests,
+      activeRequests: responsesLimiterState.activeCount,
+      queuedRequests: responsesRequestQueue.length,
+    },
     dataStore: {
       path: STORE_PATH,
       projectCount: store.projects.length,
@@ -1153,8 +1224,10 @@ function buildHealthPayload() {
     },
     backup: {
       path: BACKUP_DIR,
-      maxCount: MAX_BACKUP_COUNT,
-      scheduledAt: `${String(DAILY_BACKUP_HOUR).padStart(2, "0")}:${String(DAILY_BACKUP_MINUTE).padStart(2, "0")}`,
+      maxCount: getBackupMaxCount(),
+      frequency: backupSchedule.frequency,
+      weekday: backupSchedule.frequency === "weekly" ? backupSchedule.weekday : null,
+      scheduledAt: `${String(backupSchedule.hour).padStart(2, "0")}:${String(backupSchedule.minute).padStart(2, "0")}`,
       lastRunAt: backupSchedulerState.lastRunAt || null,
       nextRunAt: backupSchedulerState.nextRunAt || null,
     },
@@ -1162,33 +1235,29 @@ function buildHealthPayload() {
 }
 
 function buildBackupPayload() {
+  const backups = listStoreBackups();
   return {
     ok: true,
     generatedAt: nowIso(),
-    policy: {
-      maxBackups: MAX_BACKUP_COUNT,
-      schedule: {
-        hour: DAILY_BACKUP_HOUR,
-        minute: DAILY_BACKUP_MINUTE,
-      },
-    },
+    policy: store.backupPolicy,
     scheduler: {
       running: backupSchedulerState.running,
       lastRunAt: backupSchedulerState.lastRunAt || null,
       nextRunAt: backupSchedulerState.nextRunAt || null,
     },
-    backups: listStoreBackups(),
+    availableDates: uniqueStrings(backups.map((item) => item.date)),
+    backups,
   };
 }
 
 function initializeBackupSystem() {
   mkdirSync(BACKUP_DIR, { recursive: true });
-  pruneBackups(MAX_BACKUP_COUNT);
+  pruneBackups(getBackupMaxCount());
   scheduleNextBackupRun(new Date());
 }
 
 function scheduleNextBackupRun(referenceDate) {
-  const nextRunAt = resolveNextDailyRunAt(referenceDate, DAILY_BACKUP_HOUR, DAILY_BACKUP_MINUTE);
+  const nextRunAt = resolveNextBackupRunAt(referenceDate, getBackupSchedule());
   backupSchedulerState.nextRunAt = nextRunAt.toISOString();
   if (backupSchedulerState.timer) {
     clearTimeout(backupSchedulerState.timer);
@@ -1203,7 +1272,7 @@ function runScheduledBackup() {
   backupSchedulerState.running = true;
   try {
     createStoreBackup("auto");
-    pruneBackups(MAX_BACKUP_COUNT);
+    pruneBackups(getBackupMaxCount());
     backupSchedulerState.lastRunAt = nowIso();
   } catch (error) {
     console.error("[backup] scheduled backup failed:", error instanceof Error ? error.message : error);
@@ -1221,6 +1290,29 @@ function resolveNextDailyRunAt(referenceDate, hour, minute) {
     next.setDate(next.getDate() + 1);
   }
   return next;
+}
+
+function resolveNextWeeklyRunAt(referenceDate, hour, minute, weekday) {
+  const reference = referenceDate instanceof Date ? referenceDate : new Date();
+  const next = new Date(reference.getTime());
+  next.setHours(hour, minute, 0, 0);
+  const currentWeekday = next.getDay();
+  let dayDelta = weekday - currentWeekday;
+  if (dayDelta < 0) {
+    dayDelta += 7;
+  }
+  next.setDate(next.getDate() + dayDelta);
+  if (next.getTime() <= reference.getTime()) {
+    next.setDate(next.getDate() + 7);
+  }
+  return next;
+}
+
+function resolveNextBackupRunAt(referenceDate, schedule) {
+  if (schedule.frequency === "weekly") {
+    return resolveNextWeeklyRunAt(referenceDate, schedule.hour, schedule.minute, schedule.weekday);
+  }
+  return resolveNextDailyRunAt(referenceDate, schedule.hour, schedule.minute);
 }
 
 function createStoreBackup(trigger) {
@@ -1254,7 +1346,7 @@ function listStoreBackups() {
 }
 
 function pruneBackups(maxCount) {
-  const limit = Number(maxCount) > 0 ? Number(maxCount) : MAX_BACKUP_COUNT;
+  const limit = Number(maxCount) > 0 ? Number(maxCount) : getBackupMaxCount();
   const backups = listStoreBackups();
   if (backups.length <= limit) {
     return backups;
@@ -1291,10 +1383,27 @@ function restoreStoreBackup(backupId) {
   store = normalized;
   touchStore();
   persistStore();
+  initializeBackupSystem();
   return {
     backupId,
     restoredAt: nowIso(),
     clearedSessionCount,
+  };
+}
+
+function restoreStoreBackupByDate(backupDate) {
+  const normalizedDate = normalizeBackupDateInput(backupDate);
+  if (!normalizedDate) {
+    throw new Error("backupDate is invalid.");
+  }
+  const targetBackup = listStoreBackups().find((item) => item.date === normalizedDate);
+  if (!targetBackup) {
+    throw new Error("Backup date not found.");
+  }
+  const restored = restoreStoreBackup(targetBackup.id);
+  return {
+    ...restored,
+    backupDate: normalizedDate,
   };
 }
 
@@ -1308,11 +1417,13 @@ function listBackupFileNames() {
 }
 
 function buildBackupItem(fileName, stat) {
+  const createdAt = new Date(stat.mtimeMs).toISOString();
   return {
     id: fileName,
     fileName,
     trigger: resolveBackupTrigger(fileName),
-    createdAt: new Date(stat.mtimeMs).toISOString(),
+    createdAt,
+    date: createdAt.slice(0, 10),
     sizeBytes: Number(stat.size) || 0,
   };
 }
@@ -1386,6 +1497,10 @@ function isManagerUser(user) {
   return normalizeUserRole(asString(user?.role)) === "manager";
 }
 
+function isBackupAdminUser(user) {
+  return Boolean(user?.isBackupAdmin) || normalizeAccount(user?.account) === BACKUP_ADMIN_ACCOUNT;
+}
+
 function buildManagementPayload(currentUser) {
   const roleCounts = Object.keys(ROLE_DEFINITIONS).map((code) => ({
     code,
@@ -1419,6 +1534,7 @@ function buildManagementPayload(currentUser) {
     levels: roleCounts,
     visibleUsers,
     canManageUsers: role === "manager",
+    canManageBackups: isBackupAdminUser(currentUser),
   };
 }
 
@@ -1581,6 +1697,7 @@ function buildUserView(user) {
     roleName: roleMeta?.name || role,
     regionId: user.regionId || "",
     regionName: getRegionById(user.regionId)?.name || "",
+    isBackupAdmin: isBackupAdminUser(user),
   };
 }
 
@@ -2047,16 +2164,16 @@ function normalizeScenarioForStorage({ scenario, operation, project }) {
   };
 }
 
-async function processIntake({ project, note, visitDate, followupSession, submitScenario, currentUser }) {
-  const extracted = await extractStructuredUpdate({ project, note, visitDate, followupSession });
-  const departmentId = ensureDepartment(project.hospitalId, extracted.extraction.department);
+async function processIntake({ project, note, visitDate, followupSession, submitScenario, currentUser, reviewedSnapshot }) {
+  const reviewedExtraction = reviewedSnapshot.extraction;
+  const departmentId = ensureDepartment(project.hospitalId, reviewedExtraction.department);
   const stageBeforeId = project.currentStageId;
-  const stageAfterId = resolveStageId(extracted.extraction.stageAfterUpdate);
+  const stageAfterId = resolveStageId(reviewedExtraction.stageAfterUpdate);
   if (!stageAfterId) {
-    throw new Error(`Unknown stage returned by Responses API: ${extracted.extraction.stageAfterUpdate}.`);
+    throw new Error(`Unknown stage returned by reviewed intake snapshot: ${reviewedExtraction.stageAfterUpdate}.`);
   }
-  const issueTagIds = resolveIssueTagIds(extracted.extraction.issues);
-  const contacts = extracted.extraction.contacts.map((contact) =>
+  const issueTagIds = resolveIssueTagIds(reviewedExtraction.issues);
+  const contacts = reviewedExtraction.contacts.map((contact) =>
     upsertHospitalContact({
       hospitalId: project.hospitalId,
       departmentId,
@@ -2072,17 +2189,17 @@ async function processIntake({ project, note, visitDate, followupSession, submit
     userId: currentUser.id,
     source: "web-intake",
     sessionType: "intake",
-    scenario: normalizeScenarioForStorage({
-      scenario: submitScenario,
-      operation: "submit",
-      project,
-    }),
-    closedAt: null,
-    closedReason: "",
-    linkedIntakeSessionId: null,
-    extractionSource: extracted.source,
-    createdAt: nowIso(),
-  };
+      scenario: normalizeScenarioForStorage({
+        scenario: submitScenario,
+        operation: "submit",
+        project,
+      }),
+      closedAt: null,
+      closedReason: "",
+      linkedIntakeSessionId: null,
+      extractionSource: "reviewed-snapshot",
+      createdAt: nowIso(),
+    };
   store.sessions.push(session);
 
   store.messages.push(
@@ -2115,7 +2232,7 @@ async function processIntake({ project, note, visitDate, followupSession, submit
         operation: "submit",
         project,
       }),
-      content: JSON.stringify(extracted.extraction),
+      content: JSON.stringify(reviewedExtraction),
       createdAt: nowIso(),
     },
   );
@@ -2132,20 +2249,20 @@ async function processIntake({ project, note, visitDate, followupSession, submit
       name: contact.name,
       role: contact.roleTitle || "",
     })),
-    feedbackSummary: extracted.extraction.feedbackSummary,
-    blockers: extracted.extraction.blockers,
-    opportunities: extracted.extraction.opportunities,
-    nextStep: extracted.extraction.nextStep,
+    feedbackSummary: reviewedExtraction.feedbackSummary,
+    blockers: reviewedExtraction.blockers,
+    opportunities: reviewedExtraction.opportunities,
+    nextStep: reviewedExtraction.nextStep,
     stageBeforeId,
     stageAfterId,
-    managerAttentionNeeded: extracted.extraction.managerAttentionNeeded,
+    managerAttentionNeeded: reviewedExtraction.managerAttentionNeeded,
     issueTagIds,
     sourceNote: note,
     createdAt: nowIso(),
   };
   store.updates.push(update);
 
-  const createdTasks = extracted.extraction.nextActions.map((action) => {
+  const createdTasks = reviewedExtraction.nextActions.map((action) => {
     const assignee = resolveUserByName(action.assigneeName) || getUserById(project.ownerUserId) || currentUser;
     const task = {
       id: createId("task"),
@@ -2156,7 +2273,7 @@ async function processIntake({ project, note, visitDate, followupSession, submit
       assigneeUserId: assignee.id,
       dueAt: action.dueDate ? `${action.dueDate}T09:00:00.000Z` : null,
       status: "todo",
-      priority: extracted.extraction.managerAttentionNeeded ? "high" : "medium",
+      priority: reviewedExtraction.managerAttentionNeeded ? "high" : "medium",
       completedAt: null,
       createdAt: nowIso(),
     };
@@ -2166,16 +2283,16 @@ async function processIntake({ project, note, visitDate, followupSession, submit
 
   project.currentStageId = stageAfterId;
   project.lastFollowUpAt = `${visitDate}T09:00:00.000Z`;
-  project.nextAction = extracted.extraction.nextStep || createdTasks[0]?.title || "";
+  project.nextAction = reviewedExtraction.nextStep || createdTasks[0]?.title || "";
   project.nextActionDueAt = createdTasks[0]?.dueAt || null;
-  project.latestSummary = extracted.extraction.feedbackSummary;
-  project.managerAttentionNeeded = extracted.extraction.managerAttentionNeeded;
+  project.latestSummary = reviewedExtraction.feedbackSummary;
+  project.managerAttentionNeeded = reviewedExtraction.managerAttentionNeeded;
   project.latestUpdateId = update.id;
   project.currentIssueTagIds = issueTagIds;
   project.riskLevel = deriveRiskLevel({
     managerAttentionNeeded: project.managerAttentionNeeded,
     issueCount: project.currentIssueTagIds.length,
-    blockers: extracted.extraction.blockers,
+    blockers: reviewedExtraction.blockers,
     stalledDays: calculateStalledDays(project.lastFollowUpAt),
   });
 
@@ -2193,9 +2310,10 @@ async function processIntake({ project, note, visitDate, followupSession, submit
 
   return {
     ok: true,
-    extractionSource: extracted.source,
-    extractionWarnings: extracted.warnings,
-    extraction: extracted.extraction,
+    extractionSource: "reviewed-snapshot",
+    extractionWarnings: [],
+    extraction: reviewedExtraction,
+    reviewedSnapshot,
     update: buildUpdateView(update),
     createdTasks: createdTasks.map((task) => buildTaskView(task)),
     project: buildProjectView(project),
@@ -2276,67 +2394,69 @@ async function runResponsesStructuredExtraction(prompt) {
 }
 
 async function runResponsesSchemaExtraction({ prompt, schema, schemaName, instructions }) {
-  const endpoint = `${responsesBaseUrl}/responses`;
-  let response;
+  return runWithResponsesConcurrencyLimit(async () => {
+    const endpoint = `${responsesBaseUrl}/responses`;
+    let response;
 
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${responsesApiKey}`,
-        Accept: "text/event-stream",
-      },
-      body: JSON.stringify({
-        model: responsesModel,
-        store: false,
-        stream: true,
-        instructions: asString(instructions) || "Return only JSON that matches the provided schema.",
-        input: [
-          {
-            role: "user",
-            content: [{ type: "input_text", text: prompt }],
-          },
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: asString(schemaName) || "structured_response",
-            strict: true,
-            schema,
-          },
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${responsesApiKey}`,
+          Accept: "text/event-stream",
         },
-      }),
-      signal: AbortSignal.timeout(responsesTimeoutMs),
-    });
-  } catch (error) {
-    if (error instanceof Error && /abort|timeout/i.test(error.message)) {
-      throw new Error(`Responses API request timed out after ${responsesTimeoutMs}ms.`);
+        body: JSON.stringify({
+          model: responsesModel,
+          store: false,
+          stream: true,
+          instructions: asString(instructions) || "Return only JSON that matches the provided schema.",
+          input: [
+            {
+              role: "user",
+              content: [{ type: "input_text", text: prompt }],
+            },
+          ],
+          text: {
+            format: {
+              type: "json_schema",
+              name: asString(schemaName) || "structured_response",
+              strict: true,
+              schema,
+            },
+          },
+        }),
+        signal: AbortSignal.timeout(responsesTimeoutMs),
+      });
+    } catch (error) {
+      if (error instanceof Error && /abort|timeout/i.test(error.message)) {
+        throw new Error(`Responses API request timed out after ${responsesTimeoutMs}ms.`);
+      }
+      throw new Error(
+        `Responses API request failed: ${error instanceof Error ? error.message : "Unknown network error."}`,
+      );
     }
+
+    if (!response.ok) {
+      const details = clipText(await response.text(), 400);
+      throw new Error(
+        `Responses API request failed with HTTP ${response.status}${details ? `: ${details}` : "."}`,
+      );
+    }
+
+    const contentType = asString(response.headers.get("content-type")).toLowerCase();
+    if (contentType.includes("text/event-stream")) {
+      return parseResponsesEventStreamStream(response.body);
+    }
+
+    if (contentType.includes("application/json")) {
+      return parseResponsesJsonPayload(await response.json());
+    }
+
     throw new Error(
-      `Responses API request failed: ${error instanceof Error ? error.message : "Unknown network error."}`,
+      `Responses API returned unsupported content type: ${contentType || "unknown"}.`,
     );
-  }
-
-  if (!response.ok) {
-    const details = clipText(await response.text(), 400);
-    throw new Error(
-      `Responses API request failed with HTTP ${response.status}${details ? `: ${details}` : "."}`,
-    );
-  }
-
-  const contentType = asString(response.headers.get("content-type")).toLowerCase();
-  if (contentType.includes("text/event-stream")) {
-    return parseResponsesEventStream(await response.text());
-  }
-
-  if (contentType.includes("application/json")) {
-    return parseResponsesJsonPayload(await response.json());
-  }
-
-  throw new Error(
-    `Responses API returned unsupported content type: ${contentType || "unknown"}.`,
-  );
+  });
 }
 
 function normalizeExtraction(raw) {
@@ -2392,6 +2512,117 @@ function normalizeExtraction(raw) {
     stageAfterUpdate,
     managerAttentionNeeded: Boolean(raw.manager_attention_needed),
     nextStep: clipText(asString(raw.next_step), 120),
+  };
+}
+
+function normalizeReviewedIntakeSnapshot(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("reviewedSnapshot is invalid.");
+  }
+
+  const normalizedExtraction = normalizeReviewedIntakeExtraction(raw.extraction);
+  const normalizedReviewState = normalizeReviewedIntakeReviewState(raw.reviewState, normalizedExtraction.nextActions.length);
+  return {
+    extraction: applyReviewedIntakeReviewState(normalizedExtraction, normalizedReviewState),
+    reviewState: normalizedReviewState,
+  };
+}
+
+function normalizeReviewedIntakeExtraction(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("reviewedSnapshot.extraction is invalid.");
+  }
+
+  const contacts = asArray(raw.contacts).map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`reviewedSnapshot.extraction.contacts[${index}] is invalid.`);
+    }
+    return {
+      name: clipText(asString(item.name), 40),
+      role: clipText(asString(item.role), 40),
+    };
+  });
+
+  const nextActions = asArray(raw.nextActions).map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`reviewedSnapshot.extraction.nextActions[${index}] is invalid.`);
+    }
+
+    const title = clipText(asString(item.title), 80);
+    if (!title) {
+      throw new Error(`reviewedSnapshot.extraction.nextActions[${index}] is missing a title.`);
+    }
+
+    return {
+      title,
+      assigneeName: clipText(asString(item.assigneeName), 40),
+      dueDate: normalizeDateOnly(item.dueDate),
+    };
+  });
+
+  const stageAfterUpdate = clipText(asString(raw.stageAfterUpdate), 80);
+  if (!stageAfterUpdate) {
+    throw new Error("reviewedSnapshot.extraction.stageAfterUpdate is required.");
+  }
+
+  const nextStep = clipText(asString(raw.nextStep), 120);
+  const feedbackSummary = clipText(asString(raw.feedbackSummary), 260);
+  const blockers = clipText(asString(raw.blockers), 180);
+  const opportunities = clipText(asString(raw.opportunities), 180);
+  const issues = uniqueStrings(
+    asArray(raw.issues)
+      .map((item) => clipText(asString(item), 80))
+      .filter(Boolean),
+  );
+
+  return {
+    department: clipText(asString(raw.department), 80),
+    contacts: ensureUniqueByName(contacts).filter((item) => item.name),
+    feedbackSummary,
+    blockers,
+    opportunities,
+    issues,
+    nextActions,
+    stageAfterUpdate,
+    managerAttentionNeeded: Boolean(raw.managerAttentionNeeded),
+    nextStep,
+  };
+}
+
+function normalizeReviewedIntakeReviewState(raw, nextActionCount) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("reviewedSnapshot.reviewState is invalid.");
+  }
+
+  const nextStepCancelled = Boolean(raw.nextStep?.cancelled);
+  const nextActions = asArray(raw.nextActions);
+  if (nextActions.length !== nextActionCount) {
+    throw new Error("reviewedSnapshot.reviewState.nextActions length does not match extraction.nextActions length.");
+  }
+
+  return {
+    nextStep: {
+      cancelled: nextStepCancelled,
+    },
+    nextActions: nextActions.map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error(`reviewedSnapshot.reviewState.nextActions[${index}] is invalid.`);
+      }
+      const itemId = clipText(asString(item.itemId), 80) || `next-action-${index}`;
+      return {
+        itemId,
+        cancelled: Boolean(item.cancelled),
+      };
+    }),
+  };
+}
+
+function applyReviewedIntakeReviewState(extraction, reviewState) {
+  const keptActions = extraction.nextActions.filter((_, index) => !reviewState.nextActions[index]?.cancelled);
+  return {
+    ...extraction,
+    nextStep: reviewState.nextStep.cancelled ? "" : extraction.nextStep,
+    nextActions: keptActions,
   };
 }
 
@@ -2524,7 +2755,8 @@ function loadOrCreateStore() {
 }
 
 function normalizeStoreShape(input) {
-  const normalizedUsers = normalizeUsers(Array.isArray(input.users) ? input.users : []);
+  const regions = Array.isArray(input.regions) ? input.regions : [];
+  const normalizedUsers = normalizeUsers(Array.isArray(input.users) ? input.users : [], regions);
   const userIds = new Set(normalizedUsers.map((item) => item.id));
   const normalizedAuthSessions = normalizeAuthSessions(
     Array.isArray(input.authSessions) ? input.authSessions : [],
@@ -2538,9 +2770,10 @@ function normalizeStoreShape(input) {
   return {
     meta: input.meta || { version: "0.1.0", createdAt: nowIso(), updatedAt: nowIso() },
     currentUserId,
-    regions: Array.isArray(input.regions) ? input.regions : [],
+    regions,
     users: normalizedUsers,
     authSessions: normalizedAuthSessions,
+    backupPolicy: normalizeBackupPolicy(input?.backupPolicy),
     hospitals: Array.isArray(input.hospitals) ? input.hospitals : [],
     departments: Array.isArray(input.departments) ? input.departments : [],
     contacts: Array.isArray(input.contacts) ? input.contacts : [],
@@ -2555,9 +2788,10 @@ function normalizeStoreShape(input) {
   };
 }
 
-function normalizeUsers(users) {
+function normalizeUsers(users, regions) {
   const usedAccounts = new Set();
-  return users.map((user, index) => normalizeUserRecord(user, index, usedAccounts));
+  const normalizedUsers = users.map((user, index) => normalizeUserRecord(user, index, usedAccounts));
+  return ensureBackupAdminUser(normalizedUsers, usedAccounts, regions);
 }
 
 function normalizeUserRecord(user, index, usedAccounts) {
@@ -2580,7 +2814,41 @@ function normalizeUserRecord(user, index, usedAccounts) {
     passwordSalt,
     passwordHash,
     createdAt: asString(user?.createdAt) || nowIso(),
+    isBackupAdmin: normalizeBoolean(user?.isBackupAdmin),
   };
+}
+
+function ensureBackupAdminUser(users, usedAccounts, regions) {
+  let backupAdminUser = users.find((item) => normalizeAccount(item.account) === BACKUP_ADMIN_ACCOUNT);
+  if (!backupAdminUser) {
+    backupAdminUser = users.find((item) => item.isBackupAdmin);
+  }
+  if (!backupAdminUser) {
+    const passwordSalt = createPasswordSalt();
+    backupAdminUser = {
+      id: createId("user"),
+      name: BACKUP_ADMIN_NAME || "Backup Admin",
+      role: "manager",
+      regionId: asString(regions[0]?.id) || asString(users[0]?.regionId),
+      account: toUniqueAccount(BACKUP_ADMIN_ACCOUNT, usedAccounts),
+      passwordSalt,
+      passwordHash: hashPassword(DEFAULT_INITIAL_PASSWORD, passwordSalt),
+      createdAt: nowIso(),
+      isBackupAdmin: true,
+    };
+    users.push(backupAdminUser);
+  }
+  for (const user of users) {
+    user.isBackupAdmin = user.id === backupAdminUser.id;
+  }
+  backupAdminUser.role = "manager";
+  if (!backupAdminUser.account) {
+    backupAdminUser.account = toUniqueAccount(BACKUP_ADMIN_ACCOUNT, usedAccounts);
+  }
+  if (!backupAdminUser.regionId) {
+    backupAdminUser.regionId = asString(regions[0]?.id) || asString(users[0]?.regionId);
+  }
+  return users;
 }
 
 function normalizeAuthSessions(authSessions, userIds) {
@@ -2690,6 +2958,82 @@ function normalizeDateOnly(value) {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
+function normalizeBackupDateInput(value) {
+  const normalized = normalizeDateOnly(value);
+  return normalized && /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function normalizeBackupFrequency(value) {
+  const normalized = asString(value).toLowerCase();
+  return normalized === "weekly" ? "weekly" : normalized === "daily" ? "daily" : "";
+}
+
+function normalizeBackupPolicy(policy) {
+  const schedule = policy && typeof policy === "object" ? policy.schedule : null;
+  const normalizedSchedule = {
+    frequency: normalizeBackupFrequency(schedule?.frequency) || "daily",
+    hour: normalizeHourValue(schedule?.hour, DAILY_BACKUP_HOUR),
+    minute: normalizeMinuteValue(schedule?.minute, DAILY_BACKUP_MINUTE),
+    weekday: normalizeWeekdayValue(schedule?.weekday, DEFAULT_BACKUP_WEEKDAY),
+  };
+  return {
+    maxBackups: MAX_BACKUP_COUNT,
+    schedule: normalizedSchedule,
+  };
+}
+
+function normalizeBackupScheduleInput(input) {
+  const frequency = normalizeBackupFrequency(input?.frequency);
+  if (!frequency) {
+    throw new Error("backup frequency is invalid.");
+  }
+  const hour = normalizeHourValue(input?.hour, NaN);
+  if (!Number.isInteger(hour)) {
+    throw new Error("backup hour is invalid.");
+  }
+  const minute = normalizeMinuteValue(input?.minute, NaN);
+  if (!Number.isInteger(minute)) {
+    throw new Error("backup minute is invalid.");
+  }
+  const weekday = frequency === "weekly" ? normalizeWeekdayValue(input?.weekday, NaN) : DEFAULT_BACKUP_WEEKDAY;
+  if (frequency === "weekly" && !Number.isInteger(weekday)) {
+    throw new Error("backup weekday is invalid.");
+  }
+  return {
+    frequency,
+    hour,
+    minute,
+    weekday,
+  };
+}
+
+function normalizeHourValue(value, fallbackValue) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 23 ? parsed : fallbackValue;
+}
+
+function normalizeMinuteValue(value, fallbackValue) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 59 ? parsed : fallbackValue;
+}
+
+function normalizeWeekdayValue(value, fallbackValue) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : fallbackValue;
+}
+
+function getBackupPolicy() {
+  return normalizeBackupPolicy(store?.backupPolicy);
+}
+
+function getBackupSchedule() {
+  return getBackupPolicy().schedule;
+}
+
+function getBackupMaxCount() {
+  return getBackupPolicy().maxBackups;
+}
+
 function clipText(value, maxLength) {
   const text = asString(value);
   if (!text) {
@@ -2700,6 +3044,10 @@ function clipText(value, maxLength) {
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeBoolean(value) {
+  return value === true || value === "true" || value === 1 || value === "1";
 }
 
 function asArray(value) {
@@ -2831,13 +3179,55 @@ function getResponsesApiHealth() {
   return { configured: true, message: "Responses API configured." };
 }
 
-function parseResponsesEventStream(streamText) {
+function runWithResponsesConcurrencyLimit(task) {
+  return new Promise((resolve, reject) => {
+    const startTask = () => {
+      responsesLimiterState.activeCount += 1;
+      Promise.resolve()
+        .then(task)
+        .then(resolve, reject)
+        .finally(() => {
+          responsesLimiterState.activeCount = Math.max(0, responsesLimiterState.activeCount - 1);
+          flushResponsesRequestQueue();
+        });
+    };
+
+    if (responsesLimiterState.activeCount < responsesMaxConcurrentRequests) {
+      startTask();
+      return;
+    }
+
+    responsesRequestQueue.push(startTask);
+  });
+}
+
+function flushResponsesRequestQueue() {
+  while (
+    responsesLimiterState.activeCount < responsesMaxConcurrentRequests &&
+    responsesRequestQueue.length
+  ) {
+    const nextTask = responsesRequestQueue.shift();
+    if (typeof nextTask === "function") {
+      nextTask();
+    }
+  }
+}
+
+async function parseResponsesEventStreamStream(body) {
+  if (!body || typeof body.getReader !== "function") {
+    throw new Error("Responses API stream body is unavailable.");
+  }
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
   let outputText = "";
   let responseError = null;
+  let completed = false;
 
-  for (const entry of parseSseEntries(streamText)) {
+  const processEntry = (entry) => {
     if (!entry.data || entry.data === "[DONE]") {
-      continue;
+      return;
     }
 
     let payload;
@@ -2855,12 +3245,48 @@ function parseResponsesEventStream(streamText) {
       outputText = payload.text;
     }
 
-    if (payload.type === "response.completed" && payload.response?.error) {
-      responseError = payload.response.error;
+    if (payload.type === "response.completed") {
+      if (payload.response?.error) {
+        responseError = payload.response.error;
+      }
+      completed = true;
     }
 
     if ((payload.type === "response.failed" || payload.type === "response.error") && payload.error) {
       responseError = payload.error;
+      completed = true;
+    }
+  };
+
+  try {
+    while (!completed) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const consumed = consumeSseBlocks(buffer);
+      buffer = consumed.rest;
+      for (const entry of consumed.entries) {
+        processEntry(entry);
+        if (completed) {
+          break;
+        }
+      }
+
+      if (done) {
+        break;
+      }
+    }
+
+    if (buffer.trim()) {
+      const consumed = consumeSseBlocks(`${buffer}\n\n`);
+      for (const entry of consumed.entries) {
+        processEntry(entry);
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // Ignore reader cancellation errors after the completion event.
     }
   }
 
@@ -2902,25 +3328,41 @@ function parseStructuredResponseText(text) {
   }
 }
 
-function parseSseEntries(streamText) {
-  return streamText
-    .split(/\r?\n\r?\n/)
-    .map((block) => {
-      const entry = { event: "", data: "" };
-      const dataLines = [];
+function consumeSseBlocks(input) {
+  let normalized = String(input || "").replace(/\r\n/g, "\n");
+  const entries = [];
+  let boundaryIndex = normalized.indexOf("\n\n");
 
-      for (const line of block.split(/\r?\n/)) {
-        if (line.startsWith("event:")) {
-          entry.event = line.slice(6).trim();
-        } else if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trimStart());
-        }
-      }
+  while (boundaryIndex !== -1) {
+    const block = normalized.slice(0, boundaryIndex);
+    normalized = normalized.slice(boundaryIndex + 2);
+    const entry = parseSseBlock(block);
+    if (entry.event || entry.data) {
+      entries.push(entry);
+    }
+    boundaryIndex = normalized.indexOf("\n\n");
+  }
 
-      entry.data = dataLines.join("\n");
-      return entry;
-    })
-    .filter((entry) => entry.event || entry.data);
+  return {
+    entries,
+    rest: normalized,
+  };
+}
+
+function parseSseBlock(block) {
+  const entry = { event: "", data: "" };
+  const dataLines = [];
+
+  for (const line of String(block || "").split("\n")) {
+    if (line.startsWith("event:")) {
+      entry.event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  entry.data = dataLines.join("\n");
+  return entry;
 }
 
 function formatResponsesApiError(error) {
