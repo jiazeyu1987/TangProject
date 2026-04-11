@@ -1,0 +1,112 @@
+{
+  "schema_version": 2,
+  "task_id": "task-2d8d1cfa9b-20260411T125303",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "前端文案修复",
+      "status": "completed",
+      "objective": "消除 `public/app.js` 中乱码并统一中文文案，同时将 `public/index.html` 可见英文标签改为中文。",
+      "owned_paths": [],
+      "dependencies": [
+        "无新增依赖。"
+      ],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "`public/app.js` 中用户可见乱码文案被修复为中文可读文案（含历史信息、任务按钮、备份区、项目详情提示等）。",
+          "status": "completed",
+          "evidence": [
+            "public/app.js",
+            "public/index.html",
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-summary.json",
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-ui-text.png"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "`public/index.html` 关键可见英文标签改为中文（入口眉题、追问按钮、追问弹窗标题、信号/台账/任务/汇总眉题等）。",
+          "status": "completed",
+          "evidence": [
+            "public/app.js",
+            "public/index.html",
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-summary.json",
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-ui-text.png"
+          ]
+        }
+      ],
+      "evidence": [
+        "public/app.js",
+        "public/index.html"
+      ],
+      "notes": "- 已修复前端乱码并完成页面可见英文中文化。",
+      "last_reviewed_at": "2026-04-11T13:28:22"
+    },
+    {
+      "phase_id": "P2",
+      "title": "验证与证据沉淀",
+      "status": "completed",
+      "objective": "通过静态检查与真实浏览器 E2E 确认修复有效。",
+      "owned_paths": [],
+      "dependencies": [
+        "本地服务可访问，Playwright 可运行。"
+      ],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "`npm run check` 成功。",
+          "status": "completed",
+          "evidence": [
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-summary.json",
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-ui-text.png"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "真实浏览器 E2E 文案校验通过，`final-e2e-summary.json` 中 `finalResult = passed`。",
+          "status": "completed",
+          "evidence": [
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-summary.json",
+            "output/task-2d8d1cfa9b-20260411T125303/final-e2e-ui-text.png"
+          ]
+        }
+      ],
+      "evidence": [
+        "output/task-2d8d1cfa9b-20260411T125303/final-e2e-summary.json",
+        "output/task-2d8d1cfa9b-20260411T125303/final-e2e-ui-text.png"
+      ],
+      "notes": "- 静态检查与真实浏览器 E2E 文案校验通过。",
+      "last_reviewed_at": "2026-04-11T13:28:37"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 2,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-11T12:53:03",
+  "updated_at": "2026-04-11T13:33:07",
+  "branch": "main",
+  "baseline_revision": "ee441ae336b4ce8b1d3bc0503fcebe7da5a98bca",
+  "workspace_root": "D:\\ProjectPackage\\TangProject",
+  "tasks_root": "D:\\ProjectPackage\\TangProject\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\task-2d8d1cfa9b-20260411T125303",
+  "goal": "修复前端上的乱码问题,将英文转换成中文",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\task-2d8d1cfa9b-20260411T125303\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\task-2d8d1cfa9b-20260411T125303\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\task-2d8d1cfa9b-20260411T125303\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\task-2d8d1cfa9b-20260411T125303\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\TangProject\\doc\\tasks\\task-2d8d1cfa9b-20260411T125303\\test-report.md"
+  }
+}

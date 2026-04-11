@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI 医院导入管理系统</title>
+    <title>智能医院导入管理系统</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -27,7 +27,7 @@
           <article id="entryCard" class="panel-card">
             <div class="section-head">
               <div>
-                <p id="entryEyebrow" class="section-eyebrow">Entry</p>
+                <p id="entryEyebrow" class="section-eyebrow">录入</p>
                 <h2 id="entryTitle">纪要录入</h2>
               </div>
               <p id="entryCopy" class="section-copy">录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议。</p>
@@ -37,7 +37,7 @@
               <section id="replySourceCard" class="reply-source-card" hidden aria-live="polite">
                 <div class="reply-source-head">
                   <div>
-                    <p class="reply-source-eyebrow">Reply Context</p>
+                    <p class="reply-source-eyebrow">回复上下文</p>
                     <strong id="replySourceTitle">原始留言记录</strong>
                   </div>
                   <div id="replySourceMeta" class="reply-source-meta"></div>
@@ -87,7 +87,7 @@
                 <p id="entryHint" class="hint">建议记录完整业务信息，以便系统准确生成项目更新与任务动作。</p>
                 <div class="form-actions">
                   <button id="historyInfoButton" class="chip ai-followup-button" type="button">历史信息</button>
-                  <button id="aiFollowupButton" class="chip ai-followup-button" type="button">AI追问</button>
+                  <button id="aiFollowupButton" class="chip ai-followup-button" type="button">智能追问</button>
                   <button id="supplementButton" class="chip ai-followup-button" type="button">补充编辑</button>
                   <button id="submitButton" class="primary-button" type="submit">生成纪要</button>
                 </div>
@@ -102,7 +102,7 @@
           <article class="panel-card">
             <div class="section-head">
               <div>
-                <p class="section-eyebrow">Signal</p>
+                <p class="section-eyebrow">信号</p>
                 <h2>管理信号</h2>
               </div>
               <p class="section-copy">展示当前需要优先关注的项目、停滞医院、逾期任务与最新推进动态。</p>
@@ -124,7 +124,7 @@
                     data-ledger-subtab="list"
                     aria-controls="projectList"
                   >
-                    <span class="section-eyebrow">Ledger</span>
+                    <span class="section-eyebrow">台账</span>
                     <span class="ledger-subtab-title">医院项目台账</span>
                   </button>
                   <button
@@ -135,7 +135,7 @@
                     data-ledger-subtab="detail"
                     aria-controls="projectDetail"
                   >
-                    <span class="section-eyebrow">Project Detail</span>
+                    <span class="section-eyebrow">项目详情</span>
                     <span class="ledger-subtab-title">项目详情视图</span>
                   </button>
                 </div>
@@ -151,7 +151,7 @@
           <article class="panel-card">
             <div class="section-head">
               <div>
-                <p class="section-eyebrow">Tasks</p>
+                <p class="section-eyebrow">任务</p>
                 <h2>任务中心</h2>
               </div>
               <p class="section-copy">集中处理导入项目相关待办，支持直接更新任务状态，验证任务闭环。</p>
@@ -164,7 +164,7 @@
           <article class="panel-card">
             <div class="section-head">
               <div>
-                <p class="section-eyebrow">Insights</p>
+                <p class="section-eyebrow">汇总</p>
                 <h2>管理汇总</h2>
               </div>
               <p class="section-copy">按阶段分布、高频问题和最新动态汇总项目情况，支持管理判断与资源配置。</p>
@@ -210,7 +210,7 @@
     <div id="followupDialog" class="modal-backdrop" hidden>
       <div class="modal-card modal-card-followup" role="dialog" aria-modal="true" aria-labelledby="followupDialogTitle">
         <div class="modal-head">
-          <h3 id="followupDialogTitle">AI追问</h3>
+          <h3 id="followupDialogTitle">智能追问</h3>
           <button id="followupDialogCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
         </div>
         <p class="modal-copy">请先回答以下追问，回答完成后点击“保存回答”，再点击“再次生成纪要”。</p>

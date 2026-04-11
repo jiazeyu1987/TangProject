@@ -1,4 +1,4 @@
-const STORAGE_KEY = "clinical-rollout-selected-project";
+﻿const STORAGE_KEY = "clinical-rollout-selected-project";
 const ACTIVE_TAB_KEY = "clinical-rollout-active-tab";
 const AUTH_TOKEN_KEY = "clinical-rollout-auth-token";
 const INSIGHT_SUBTAB_KEY = "clinical-rollout-insight-subtab";
@@ -164,6 +164,13 @@ const state = {
     projectId: "",
     sessions: [],
   },
+  contactEditor: {
+    editingProjectId: "",
+    draftContacts: [],
+    originalContacts: [],
+    mergeActions: [],
+    saving: false,
+  },
   projectDetailTaskListExpandedProjectId: "",
 };
 
@@ -172,19 +179,44 @@ const VISIT_DATE_OFFSETS = {
   yesterday: 1,
   day_before_yesterday: 2,
 };
+const CONTACT_LONG_PRESS_MS = 1000;
+const CONTACT_DRAG_START_DISTANCE = 6;
+const CONTACT_MERGE_OVERLAP_THRESHOLD = 0.75;
+const CONTACT_MERGE_SNAP_RATIO = 0.9;
+const contactLongPressState = {
+  timer: null,
+  triggered: false,
+};
+const contactEditorGestureState = {
+  pointerId: null,
+  projectId: "",
+  sourceIndex: -1,
+  targetIndex: -1,
+  sourceCard: null,
+  targetCard: null,
+  startClientX: 0,
+  startClientY: 0,
+  translateX: 0,
+  translateY: 0,
+  sourceRect: null,
+  dragging: false,
+  decidingMerge: false,
+  wiggleTimer: null,
+  lastDragEndedAt: 0,
+};
 
 const ENTRY_MODE_COPY = {
   default: {
-    eyebrow: "ENTRY",
+    eyebrow: "录入",
     title: "纪要录入",
     copy: "录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议",
     visitDateLabel: "拜访日期",
     noteLabel: "原始推进记录",
-    notePlaceholder: "请描述本次医院推进情况，例如：拜访科室、关键接触人、反馈意见、阻塞点、下一步计划及是否需要管理支持",
+    notePlaceholder: "请描述本次医院推进记录，例如：拜访科室、关键联系人、反馈意见、阻塞点、下一步计划与所需支持",
     hint: "建议记录完整业务信息，以便系统准确生成项目更新与任务动作",
   },
   reply: {
-    eyebrow: "ENTRY",
+    eyebrow: "录入",
     title: "纪要录入（回复）",
     copy: "围绕指定留言补充回复信息，系统会先同步原始回复记录，再继续生成结构化纪要",
     visitDateLabel: "回复日期",
@@ -227,6 +259,7 @@ elements.projectSelect.addEventListener("change", () => {
   state.activeRemarkId = "";
   clearSupplementContext();
   persistSelection();
+  resetContactEditorState({ silent: true });
   resetFollowupState();
   resetHistoryInfoState();
   renderAll();
@@ -515,12 +548,120 @@ elements.projectList.addEventListener("click", (event) => {
   clearSupplementContext();
   persistSelection();
   persistLedgerSubTab();
+  resetContactEditorState({ silent: true });
   resetFollowupState();
   resetHistoryInfoState();
   renderAll();
 });
 
 elements.projectDetail.addEventListener("click", async (event) => {
+  const longPressCard = event.target.closest("[data-contact-card]");
+  if (contactLongPressState.triggered && longPressCard) {
+    event.preventDefault();
+    event.stopPropagation();
+    contactLongPressState.triggered = false;
+    return;
+  }
+  contactLongPressState.triggered = false;
+
+  const contactToken = event.target.closest("button[data-contact-token][data-contact-field][data-contact-index]");
+  if (contactToken) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (Date.now() - Number(contactEditorGestureState.lastDragEndedAt || 0) < 300) {
+      return;
+    }
+
+    const projectId = String(contactToken.dataset.projectId || state.selectedProjectId || "").trim();
+    if (!isContactEditorActive(projectId) || state.contactEditor.saving) {
+      return;
+    }
+
+    const contactIndex = Number(contactToken.dataset.contactIndex);
+    if (
+      !Number.isInteger(contactIndex) ||
+      contactIndex < 0 ||
+      contactIndex >= state.contactEditor.draftContacts.length
+    ) {
+      return;
+    }
+
+    const field = String(contactToken.dataset.contactField || "").trim();
+    if (!field) {
+      return;
+    }
+    const row = state.contactEditor.draftContacts[contactIndex];
+    if (!row) {
+      return;
+    }
+    const fieldLabelMap = {
+      name: "姓名",
+      roleTitle: "角色",
+      departmentName: "科室",
+    };
+    const fieldLabel = fieldLabelMap[field] || "词条";
+    const currentValue = String(row[field] || "");
+    const nextValue = window.prompt(`请输入${fieldLabel}`, currentValue);
+    if (nextValue === null) {
+      return;
+    }
+    row[field] = String(nextValue).trim();
+    renderProjectDetail();
+    return;
+  }
+
+  const contactActionButton = event.target.closest("button[data-contact-action]");
+  if (contactActionButton) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const action = String(contactActionButton.dataset.contactAction || "");
+    const projectId = String(contactActionButton.dataset.projectId || state.selectedProjectId || "").trim();
+    if (!projectId) {
+      return;
+    }
+
+    if (action === "edit") {
+      if (state.busy || state.followup.busy || state.contactEditor.saving) {
+        return;
+      }
+      startContactEditor(projectId);
+      return;
+    }
+    if (action === "save") {
+      if (state.busy || state.followup.busy || state.contactEditor.saving) {
+        return;
+      }
+      await saveContactEditor(projectId);
+      return;
+    }
+    if (action === "cancel") {
+      if (state.contactEditor.saving) {
+        return;
+      }
+      resetContactEditorState({ projectId, silent: true });
+      renderProjectDetail();
+      return;
+    }
+    if (action === "add") {
+      if (state.busy || state.followup.busy || state.contactEditor.saving) {
+        return;
+      }
+      appendContactDraftRow(projectId);
+      return;
+    }
+    if (action === "remove") {
+      if (state.busy || state.followup.busy || state.contactEditor.saving) {
+        return;
+      }
+      const rowIndex = Number(contactActionButton.dataset.contactIndex);
+      removeContactDraftRow(projectId, rowIndex);
+      return;
+    }
+    return;
+  }
+
   const taskToggleButton = event.target.closest("button[data-project-task-toggle][data-project-id]");
   if (taskToggleButton) {
     event.preventDefault();
@@ -568,6 +709,88 @@ elements.projectDetail.addEventListener("click", async (event) => {
   }
 
   await createProjectRemark(projectId);
+});
+
+elements.projectDetail.addEventListener("pointerdown", (event) => {
+  if (state.busy || state.followup.busy || state.contactEditor.saving) {
+    return;
+  }
+  if (event.pointerType === "mouse" && Number(event.button) !== 0) {
+    return;
+  }
+
+  const editContactCard = event.target.closest("[data-contact-edit-card][data-contact-index][data-project-id]");
+  if (editContactCard) {
+    const projectId = String(editContactCard.dataset.projectId || "").trim();
+    if (isContactEditorActive(projectId)) {
+      if (event.target.closest("button[data-contact-action='remove']")) {
+        return;
+      }
+      beginContactEditorCardGesture(event, editContactCard);
+      return;
+    }
+  }
+
+  const contactCard = event.target.closest("[data-contact-card][data-project-id]");
+  if (!contactCard) {
+    return;
+  }
+
+  const projectId = String(contactCard.dataset.projectId || "").trim();
+  if (!projectId || state.contactEditor.editingProjectId === projectId) {
+    return;
+  }
+
+  clearContactLongPressTimer();
+  contactLongPressState.triggered = false;
+  contactLongPressState.timer = setTimeout(() => {
+    contactLongPressState.triggered = true;
+    startContactEditor(projectId);
+  }, CONTACT_LONG_PRESS_MS);
+});
+
+elements.projectDetail.addEventListener("pointermove", (event) => {
+  updateContactEditorCardGesture(event);
+});
+
+for (const pointerEventName of ["pointerup", "pointercancel"]) {
+  elements.projectDetail.addEventListener(pointerEventName, (event) => {
+    clearContactLongPressTimer();
+    endContactEditorCardGesture(event);
+  });
+}
+elements.projectDetail.addEventListener("pointerleave", () => {
+  clearContactLongPressTimer();
+});
+
+elements.projectDetail.addEventListener("input", (event) => {
+  const input = event.target.closest("input[data-contact-field][data-contact-index]");
+  if (!input) {
+    return;
+  }
+  const projectId = String(input.dataset.projectId || "").trim();
+  if (!projectId || state.contactEditor.editingProjectId !== projectId) {
+    return;
+  }
+
+  const rowIndex = Number(input.dataset.contactIndex);
+  if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= state.contactEditor.draftContacts.length) {
+    return;
+  }
+
+  const field = String(input.dataset.contactField || "").trim();
+  if (!field) {
+    return;
+  }
+
+  const value = String(input.value || "");
+  const row = state.contactEditor.draftContacts[rowIndex];
+  if (!row) {
+    return;
+  }
+  if (field === "name" || field === "roleTitle" || field === "departmentName") {
+    row[field] = value;
+  }
 });
 
 elements.signalPanel.addEventListener("click", (event) => {
@@ -646,7 +869,7 @@ elements.insightPanel.addEventListener("click", async (event) => {
   const select = elements.insightPanel.querySelector(`select[data-management-region-select="${escapeSelectorValue(userId)}"]`);
   const regionId = String(select?.value || "").trim();
   if (!regionId) {
-    showToast("请选择区域后再保存", "warn");
+    showToast("璇烽€夋嫨鍖哄煙鍚庡啀淇濆瓨", "warn");
     return;
   }
   await updateUserRegion(userId, regionId);
@@ -766,6 +989,7 @@ async function createProjectQuickly() {
     elements.projectSearchInput.value = "";
     state.projectSearchOpen = false;
     persistSelection();
+    resetContactEditorState({ silent: true });
     resetFollowupState();
     closeProjectModal({ force: true });
     renderAll();
@@ -844,7 +1068,7 @@ function buildReplyModeIntakeNote(rawReply, visitDate) {
 
   const normalizedVisitDate = String(visitDate || "").trim() || state.supplement.sourceDate || "--";
   const departmentName = String(state.supplement.sourceDepartment || "").trim() || "未填写";
-  const sourceText = String(state.supplement.sourceText || "").trim() || "未找到原始留言内容";
+  const sourceText = String(state.supplement.sourceText || "").trim() || "未关联上级留言内容";
   return [
     "【留言回复纪要】",
     `关联日期：${normalizedVisitDate}`,
@@ -974,7 +1198,7 @@ function renderIntakeReviewItem({ label, title, meta, cancelled, section, itemId
       <div class="result-review-item-main">
         <div class="result-review-item-head">
           <span class="result-review-item-label">${escapeHtml(label)}</span>
-          <span class="result-review-item-status ${cancelled ? "is-cancelled" : ""}">${cancelled ? "已取消" : "待审阅"}</span>
+          <span class="result-review-item-status ${cancelled ? "is-cancelled" : ""}">${cancelled ? "已取消" : "待确认"}</span>
         </div>
         <strong>${escapeHtml(title || "未填写")}</strong>
         ${meta ? `<p class="result-review-item-meta">${escapeHtml(meta)}</p>` : ""}
@@ -1191,6 +1415,7 @@ async function commitIntake() {
     clearSupplementContext();
     persistSelection();
     elements.noteInput.value = "";
+    resetContactEditorState({ silent: true });
     resetFollowupState();
     resetHistoryInfoState();
     renderAll();
@@ -1212,12 +1437,12 @@ async function openFollowupDialogByGeneratingQuestions(options = {}) {
   const previewReady = isPreviewReadyForCurrentInput({ projectId, note, visitDate });
   const hasFollowupSession = Boolean(state.followup.sessionId);
   if (!previewReady && !hasFollowupSession && !historySessionId) {
-    showToast("请先生成纪要，再使用 AI追问", "warn");
+    showToast("请先生成纪要，再使用智能追问", "warn");
     return;
   }
 
   setFollowupBusy(true);
-  showToast("正在生成 AI追问", "busy");
+  showToast("正在生成智能追问", "busy");
   try {
     const response = await fetch("/api/followups/question", {
       method: "POST",
@@ -1250,9 +1475,9 @@ async function openFollowupDialogByGeneratingQuestions(options = {}) {
     );
     openFollowupDialog();
     renderIntakeSubmitButton();
-    showToast("已生成 1 条 AI追问", "ready");
+    showToast(`已生成 ${state.followup.pendingQuestions.length} 条智能追问`, "ready");
   } catch (error) {
-    showToast(error instanceof Error ? error.message : "AI追问生成失败", "error");
+    showToast(error instanceof Error ? error.message : "智能追问生成失败", "error");
   } finally {
     setFollowupBusy(false);
   }
@@ -1398,7 +1623,7 @@ function renderHistoryInfoDialog() {
               `;
             })
             .join("")
-        : '<p class="empty-copy">该会话暂无问题记录。</p>';
+        : '<p class="empty-copy">暂无历史问题与回答记录</p>';
       return `
         <article class="history-session-card">
           <div class="history-session-head">
@@ -1420,8 +1645,7 @@ function renderHistoryInfoDialog() {
               data-history-session-id="${escapeHtml(session.sessionId)}"
               ${state.historyInfo.busy || state.followup.busy || state.busy ? "disabled" : ""}
             >
-              基于该会话继续追问
-            </button>
+              基于此继续追问
           </div>
           <details class="history-params">
             <summary>会话参数</summary>
@@ -1671,7 +1895,7 @@ function renderFollowupDialog() {
 
   const pendingQuestions = getFollowupPendingQuestions();
   if (!pendingQuestions.length) {
-    elements.followupDialogQuestionList.innerHTML = '<p class="empty-copy">暂无待回答追问，请重新点击“AI 追问”。</p>';
+    elements.followupDialogQuestionList.innerHTML = '<p class="empty-copy">暂无待回答问题，可关闭后再次点击“智能追问”生成新问题。</p>';
   } else {
     elements.followupDialogQuestionList.innerHTML = pendingQuestions
       .map((item) => {
@@ -1716,7 +1940,7 @@ async function updateTaskStatus(taskId, taskStatus) {
     ensureSelection();
     renderAll();
     applyHealthState(payload.bootstrap.health);
-    showToast("任务状态已更新", "ready");
+    showToast("浠诲姟鐘舵€佸凡鏇存柊", "ready");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "任务状态更新失败", "error");
   } finally {
@@ -1925,14 +2149,19 @@ function applyBackupPayload(payload) {
 }
 
 function ensureSelection() {
+  const previousProjectId = state.selectedProjectId;
   const projects = state.bootstrap?.projects || [];
   if (!projects.length) {
     state.selectedProjectId = "";
+    resetContactEditorState({ silent: true });
     return;
   }
 
   const matched = projects.find((project) => project.id === state.selectedProjectId);
   state.selectedProjectId = matched ? matched.id : projects[0].id;
+  if (previousProjectId !== state.selectedProjectId) {
+    resetContactEditorState({ silent: true });
+  }
   persistSelection();
 }
 
@@ -2054,11 +2283,12 @@ function renderProjectSelect() {
   if (!hadSelection) {
     state.selectedProjectId = visibleProjects[0]?.id || "";
     persistSelection();
+    resetContactEditorState({ silent: true });
     resetFollowupState();
   }
 
   if (!visibleProjects.length) {
-    elements.projectSelect.innerHTML = '<option value="">未找到匹配项目</option>';
+    elements.projectSelect.innerHTML = '<option value="">请选择医院项目</option>';
     elements.projectSelect.disabled = true;
     if (elements.projectStageText) {
       elements.projectStageText.textContent = "--";
@@ -2093,9 +2323,9 @@ function renderIntakeResult() {
       <div class="result-empty">
         <p>本次结构化结果将在生成后展示于此。</p>
         <ul>
-          <li>系统将通过 Responses API 提取科室、联系人、问题标签、阶段变化和下一步动作。</li>
-          <li>如接口未配置或提取失败，生成或提交会直接返回错误信息。</li>
-          <li>提交完成后，项目台账、任务中心与管理汇总会同步刷新。</li>
+          <li>系统会通过 Responses API 提取科室、联系人、问题标签、阶段变化与下一步动作。</li>
+          <li>如果接口未配置或提取失败，生成/提交会直接返回错误。</li>
+          <li>提交完成后，项目台账、任务中心和管理汇总会同步刷新。</li>
         </ul>
         ${
           supplementText
@@ -2122,7 +2352,7 @@ function renderIntakeResult() {
   elements.intakeResult.innerHTML = `
     <div class="result-head">
       <span class="result-badge ${extractionSource === "responses-api" ? "is-responses" : "is-fallback"}">
-        ${extractionSource === "responses-api" ? "结构化来源：Responses API" : "结构化来源：未知"}
+        ${extractionSource === "responses-api" ? "结构化来源：模型接口" : "结构化来源：未知"}
       </span>
       ${resultStale ? '<span class="result-badge is-stale">当前结果待重新生成</span>' : ""}
       <span class="mini-meta">阶段更新：${escapeHtml(extraction.stageAfterUpdate || "--")}</span>
@@ -2148,7 +2378,7 @@ function renderIntakeResult() {
     <section class="result-review-section">
       <div class="result-review-section-head">
         <span>下一步</span>
-        <small>可单项审阅</small>
+        <small>可单项审核</small>
       </div>
       ${
         extraction.nextStep
@@ -2266,7 +2496,7 @@ function renderProjectList() {
             <span
               class="remark-pill ${project.metrics.remarkCount ? "" : "is-empty"}"
               data-remark-focus-project="${project.id}"
-              title="点击顺序定位到对应上级留言条目"
+              title="点击查看该项目关联的上级留言"
             >
               上级留言 ${formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount)}
             </span>
@@ -2414,12 +2644,12 @@ function renderProjectTaskMetricCard(project) {
         aria-controls="projectDetailTaskList-${escapeHtml(project.id)}"
       >
         <span class="detail-metric-toggle-copy">
-          <span>任务状态</span>
-          <strong>${taskCount}个待办</strong>
+          <span>任务总数</span>
+          <strong>${taskCount} 项</strong>
         </span>
         <span class="detail-metric-toggle-icon ${expanded ? "is-expanded" : ""}" aria-hidden="true">▾</span>
       </button>
-      <small>点击查看当前项目相关任务，按时间顺序显示。</small>
+      <small>点击可展开项目任务明细，查看负责人、截止时间与当前状态。</small>
       <div
         class="detail-metric-expand-panel"
         id="projectDetailTaskList-${escapeHtml(project.id)}"
@@ -2431,6 +2661,552 @@ function renderProjectTaskMetricCard(project) {
   `;
 }
 
+function clearContactLongPressTimer() {
+  if (!contactLongPressState.timer) {
+    return;
+  }
+  clearTimeout(contactLongPressState.timer);
+  contactLongPressState.timer = null;
+}
+
+function clearContactEditorWiggleTimer() {
+  if (!contactEditorGestureState.wiggleTimer) {
+    return;
+  }
+  clearTimeout(contactEditorGestureState.wiggleTimer);
+  contactEditorGestureState.wiggleTimer = null;
+}
+
+function clearContactEditorGestureStyles() {
+  const sourceCard = contactEditorGestureState.sourceCard;
+  if (sourceCard) {
+    sourceCard.classList.remove("is-dragging", "is-merge-source", "is-snapping", "is-wiggling");
+    sourceCard.style.transform = "";
+    sourceCard.style.transition = "";
+  }
+  const targetCard = contactEditorGestureState.targetCard;
+  if (targetCard) {
+    targetCard.classList.remove("is-merge-target");
+  }
+}
+
+function resetContactEditorGestureState() {
+  clearContactEditorWiggleTimer();
+  clearContactEditorGestureStyles();
+  contactEditorGestureState.pointerId = null;
+  contactEditorGestureState.projectId = "";
+  contactEditorGestureState.sourceIndex = -1;
+  contactEditorGestureState.targetIndex = -1;
+  contactEditorGestureState.sourceCard = null;
+  contactEditorGestureState.targetCard = null;
+  contactEditorGestureState.startClientX = 0;
+  contactEditorGestureState.startClientY = 0;
+  contactEditorGestureState.translateX = 0;
+  contactEditorGestureState.translateY = 0;
+  contactEditorGestureState.sourceRect = null;
+  contactEditorGestureState.dragging = false;
+  contactEditorGestureState.decidingMerge = false;
+}
+
+function beginContactEditorCardGesture(event, cardElement) {
+  if (contactEditorGestureState.pointerId !== null || contactEditorGestureState.decidingMerge) {
+    return;
+  }
+  const projectId = String(cardElement.dataset.projectId || "").trim();
+  const sourceIndex = Number(cardElement.dataset.contactIndex);
+  if (!isContactEditorActive(projectId)) {
+    return;
+  }
+  if (
+    !Number.isInteger(sourceIndex) ||
+    sourceIndex < 0 ||
+    sourceIndex >= state.contactEditor.draftContacts.length
+  ) {
+    return;
+  }
+
+  clearContactEditorWiggleTimer();
+  cardElement.classList.remove("is-wiggling");
+  contactEditorGestureState.pointerId = event.pointerId;
+  contactEditorGestureState.projectId = projectId;
+  contactEditorGestureState.sourceIndex = sourceIndex;
+  contactEditorGestureState.targetIndex = -1;
+  contactEditorGestureState.sourceCard = cardElement;
+  contactEditorGestureState.targetCard = null;
+  contactEditorGestureState.startClientX = Number(event.clientX) || 0;
+  contactEditorGestureState.startClientY = Number(event.clientY) || 0;
+  contactEditorGestureState.translateX = 0;
+  contactEditorGestureState.translateY = 0;
+  contactEditorGestureState.sourceRect = cardElement.getBoundingClientRect();
+  contactEditorGestureState.dragging = false;
+
+  contactEditorGestureState.wiggleTimer = setTimeout(() => {
+    if (
+      contactEditorGestureState.sourceCard === cardElement &&
+      !contactEditorGestureState.dragging &&
+      !contactEditorGestureState.decidingMerge
+    ) {
+      cardElement.classList.add("is-wiggling");
+      setTimeout(() => {
+        cardElement.classList.remove("is-wiggling");
+      }, 1200);
+    }
+  }, CONTACT_LONG_PRESS_MS);
+}
+
+function getContactCardOverlapRatio(sourceRect, targetRect) {
+  if (!sourceRect || !targetRect) {
+    return 0;
+  }
+  const left = Math.max(sourceRect.left, targetRect.left);
+  const right = Math.min(sourceRect.right, targetRect.right);
+  const top = Math.max(sourceRect.top, targetRect.top);
+  const bottom = Math.min(sourceRect.bottom, targetRect.bottom);
+  if (right <= left || bottom <= top) {
+    return 0;
+  }
+  const overlapArea = (right - left) * (bottom - top);
+  const targetArea = Math.max(targetRect.width * targetRect.height, 1);
+  return overlapArea / targetArea;
+}
+
+function updateContactEditorCardGesture(event) {
+  if (
+    contactEditorGestureState.pointerId === null ||
+    contactEditorGestureState.pointerId !== event.pointerId ||
+    !contactEditorGestureState.sourceCard ||
+    contactEditorGestureState.decidingMerge
+  ) {
+    return;
+  }
+
+  const deltaX = (Number(event.clientX) || 0) - contactEditorGestureState.startClientX;
+  const deltaY = (Number(event.clientY) || 0) - contactEditorGestureState.startClientY;
+  const movedDistance = Math.hypot(deltaX, deltaY);
+  if (!contactEditorGestureState.dragging && movedDistance < CONTACT_DRAG_START_DISTANCE) {
+    return;
+  }
+  const dragStartedNow = !contactEditorGestureState.dragging;
+  contactEditorGestureState.dragging = true;
+  if (dragStartedNow && typeof contactEditorGestureState.sourceCard.setPointerCapture === "function") {
+    try {
+      contactEditorGestureState.sourceCard.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Ignore pointer capture failures on unsupported environments.
+    }
+  }
+  clearContactEditorWiggleTimer();
+  contactEditorGestureState.sourceCard.classList.remove("is-wiggling");
+
+  contactEditorGestureState.translateX = deltaX;
+  contactEditorGestureState.translateY = deltaY;
+  contactEditorGestureState.sourceCard.classList.add("is-dragging", "is-merge-source");
+  contactEditorGestureState.sourceCard.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+  const movedRect = {
+    left: contactEditorGestureState.sourceRect.left + deltaX,
+    right: contactEditorGestureState.sourceRect.right + deltaX,
+    top: contactEditorGestureState.sourceRect.top + deltaY,
+    bottom: contactEditorGestureState.sourceRect.bottom + deltaY,
+  };
+
+  const cards = Array.from(elements.projectDetail.querySelectorAll("[data-contact-edit-card][data-contact-index]"));
+  let bestTarget = null;
+  let bestRatio = 0;
+  for (const card of cards) {
+    const index = Number(card.dataset.contactIndex);
+    if (
+      !Number.isInteger(index) ||
+      index === contactEditorGestureState.sourceIndex ||
+      String(card.dataset.projectId || "").trim() !== contactEditorGestureState.projectId
+    ) {
+      continue;
+    }
+    const ratio = getContactCardOverlapRatio(movedRect, card.getBoundingClientRect());
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      bestTarget = { index, card };
+    }
+  }
+
+  if (contactEditorGestureState.targetCard && contactEditorGestureState.targetCard !== bestTarget?.card) {
+    contactEditorGestureState.targetCard.classList.remove("is-merge-target");
+  }
+  if (bestTarget && bestRatio >= CONTACT_MERGE_OVERLAP_THRESHOLD) {
+    contactEditorGestureState.targetCard = bestTarget.card;
+    contactEditorGestureState.targetIndex = bestTarget.index;
+    bestTarget.card.classList.add("is-merge-target");
+  } else {
+    contactEditorGestureState.targetCard = null;
+    contactEditorGestureState.targetIndex = -1;
+  }
+}
+
+function appendContactMergeAction(action) {
+  if (!action || typeof action !== "object") {
+    return;
+  }
+  state.contactEditor.mergeActions.push({
+    sourceContactId: String(action.sourceContactId || ""),
+    targetContactId: String(action.targetContactId || ""),
+    sourceSnapshot: {
+      name: String(action.sourceSnapshot?.name || ""),
+      roleTitle: String(action.sourceSnapshot?.roleTitle || ""),
+      departmentName: String(action.sourceSnapshot?.departmentName || ""),
+    },
+    targetSnapshot: {
+      name: String(action.targetSnapshot?.name || ""),
+      roleTitle: String(action.targetSnapshot?.roleTitle || ""),
+      departmentName: String(action.targetSnapshot?.departmentName || ""),
+    },
+  });
+}
+
+function applyContactDraftMerge(projectId, sourceIndex, targetIndex) {
+  if (!isContactEditorActive(projectId)) {
+    return false;
+  }
+  if (!Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex) || sourceIndex === targetIndex) {
+    return false;
+  }
+  if (
+    sourceIndex < 0 ||
+    targetIndex < 0 ||
+    sourceIndex >= state.contactEditor.draftContacts.length ||
+    targetIndex >= state.contactEditor.draftContacts.length
+  ) {
+    return false;
+  }
+
+  const sourceRow = state.contactEditor.draftContacts[sourceIndex];
+  const targetRow = state.contactEditor.draftContacts[targetIndex];
+  if (!sourceRow || !targetRow) {
+    return false;
+  }
+
+  appendContactMergeAction({
+    sourceContactId: sourceRow.id || "",
+    targetContactId: targetRow.id || "",
+    sourceSnapshot: sourceRow,
+    targetSnapshot: targetRow,
+  });
+
+  targetRow.name = String(sourceRow.name || "");
+  targetRow.roleTitle = String(sourceRow.roleTitle || "");
+  targetRow.departmentName = String(sourceRow.departmentName || "");
+
+  state.contactEditor.draftContacts.splice(sourceIndex, 1);
+  return true;
+}
+
+function endContactEditorCardGesture(event) {
+  if (contactEditorGestureState.pointerId === null) {
+    return;
+  }
+  if (
+    event &&
+    event.pointerId !== undefined &&
+    event.pointerId !== null &&
+    contactEditorGestureState.pointerId !== event.pointerId
+  ) {
+    return;
+  }
+
+  const pointerId = contactEditorGestureState.pointerId;
+  const projectId = contactEditorGestureState.projectId;
+  const sourceIndex = contactEditorGestureState.sourceIndex;
+  const targetIndex = contactEditorGestureState.targetIndex;
+  const sourceCard = contactEditorGestureState.sourceCard;
+  const targetCard = contactEditorGestureState.targetCard;
+  const sourceRect = contactEditorGestureState.sourceRect;
+  const isDragging = contactEditorGestureState.dragging;
+
+  clearContactEditorWiggleTimer();
+  if (sourceCard && typeof sourceCard.hasPointerCapture === "function") {
+    try {
+      if (sourceCard.hasPointerCapture(pointerId)) {
+        sourceCard.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      // Ignore pointer capture release failures.
+    }
+  }
+
+  if (isDragging) {
+    contactEditorGestureState.lastDragEndedAt = Date.now();
+  }
+
+  if (!isDragging || !sourceCard || !sourceRect || targetIndex < 0 || !targetCard) {
+    resetContactEditorGestureState();
+    return;
+  }
+
+  const targetRect = targetCard.getBoundingClientRect();
+  const snapOffsetX =
+    targetRect.left -
+    sourceRect.left +
+    (targetRect.width - sourceRect.width) * (1 - CONTACT_MERGE_SNAP_RATIO);
+  const snapOffsetY =
+    targetRect.top -
+    sourceRect.top +
+    (targetRect.height - sourceRect.height) * (1 - CONTACT_MERGE_SNAP_RATIO);
+  sourceCard.classList.add("is-snapping");
+  sourceCard.style.transition = "transform 140ms ease-out";
+  sourceCard.style.transform = `translate(${snapOffsetX}px, ${snapOffsetY}px)`;
+  contactEditorGestureState.decidingMerge = true;
+
+  window.setTimeout(() => {
+    const confirmed = window.confirm("是否覆盖");
+    resetContactEditorGestureState();
+    if (!confirmed) {
+      return;
+    }
+    const merged = applyContactDraftMerge(projectId, sourceIndex, targetIndex);
+    if (!merged) {
+      showToast("覆盖合并失败，请重试", "warn");
+      return;
+    }
+    renderProjectDetail();
+    showToast("名片覆盖已记录，点击“完成”保存", "ready");
+  }, 150);
+}
+
+function isContactEditorActive(projectId) {
+  return String(projectId || "").trim() && state.contactEditor.editingProjectId === String(projectId || "").trim();
+}
+
+function toContactDraftRows(contacts) {
+  return (Array.isArray(contacts) ? contacts : []).map((contact) => ({
+    id: String(contact?.id || ""),
+    name: String(contact?.name || ""),
+    roleTitle: String(contact?.roleTitle || ""),
+    departmentName: String(contact?.departmentName || ""),
+  }));
+}
+
+function normalizeContactDraftRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
+    id: String(row?.id || "").trim(),
+    name: String(row?.name || "").trim(),
+    roleTitle: String(row?.roleTitle || "").trim(),
+    departmentName: String(row?.departmentName || "").trim(),
+  }));
+}
+
+function validateContactDraftRows(rows) {
+  const seenNames = new Set();
+  return rows.map((row, index) => {
+    const id = String(row?.id || "").trim();
+    const name = String(row?.name || "").trim();
+    const roleTitle = String(row?.roleTitle || "").trim();
+    const departmentName = String(row?.departmentName || "").trim();
+    if (!name) {
+      throw new Error(`第 ${index + 1} 行联系人姓名不能为空`);
+    }
+    const key = name.toLowerCase();
+    if (seenNames.has(key)) {
+      throw new Error(`联系人“${name}”重复，请先去重再保存`);
+    }
+    seenNames.add(key);
+    return { id, name, roleTitle, departmentName };
+  });
+}
+
+function normalizeContactMergeActions(actions) {
+  return (Array.isArray(actions) ? actions : [])
+    .map((item) => ({
+      sourceContactId: String(item?.sourceContactId || "").trim(),
+      targetContactId: String(item?.targetContactId || "").trim(),
+      sourceSnapshot: {
+        name: String(item?.sourceSnapshot?.name || "").trim(),
+        roleTitle: String(item?.sourceSnapshot?.roleTitle || "").trim(),
+        departmentName: String(item?.sourceSnapshot?.departmentName || "").trim(),
+      },
+      targetSnapshot: {
+        name: String(item?.targetSnapshot?.name || "").trim(),
+        roleTitle: String(item?.targetSnapshot?.roleTitle || "").trim(),
+        departmentName: String(item?.targetSnapshot?.departmentName || "").trim(),
+      },
+    }))
+    .filter((item) => item.sourceContactId || item.targetContactId || item.sourceSnapshot.name || item.targetSnapshot.name);
+}
+
+function normalizeContactOriginalRows(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      id: String(row?.id || "").trim(),
+      name: String(row?.name || "").trim(),
+      roleTitle: String(row?.roleTitle || "").trim(),
+      departmentName: String(row?.departmentName || "").trim(),
+    }))
+    .filter((row) => row.id || row.name);
+}
+
+function generateTempContactId() {
+  return `draft-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function renderContactToken(projectId, index, field, label, value, disabled) {
+  const normalizedValue = String(value || "").trim();
+  const displayValue = normalizedValue || `点击填写${label}`;
+  const emptyClass = normalizedValue ? "" : " is-empty";
+  return `
+    <button
+      class="detail-contact-token${emptyClass}"
+      type="button"
+      data-contact-token="true"
+      data-project-id="${escapeHtml(projectId)}"
+      data-contact-index="${index}"
+      data-contact-field="${escapeHtml(field)}"
+      ${disabled ? "disabled" : ""}
+    >
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(displayValue)}</strong>
+    </button>
+  `;
+}
+
+function renderContactEditorRows(projectId, draftContacts) {
+  const disabled = state.busy || state.followup.busy || state.contactEditor.saving;
+  if (!draftContacts.length) {
+    return '<p class="detail-contact-edit-empty">当前无联系人，点击“新增名片”后可开始编辑。</p>';
+  }
+  return draftContacts
+    .map(
+      (contact, index) => `
+        <article class="detail-contact-edit-card" data-contact-edit-card="true" data-project-id="${escapeHtml(projectId)}" data-contact-index="${index}">
+          <div class="detail-contact-edit-card-top">
+            <span>名片 ${index + 1}</span>
+            <button
+              class="chip detail-contact-edit-remove"
+              type="button"
+              data-contact-action="remove"
+              data-project-id="${escapeHtml(projectId)}"
+              data-contact-index="${index}"
+              ${disabled ? "disabled" : ""}
+            >
+              删除
+            </button>
+          </div>
+          <div class="detail-contact-token-grid">
+            ${renderContactToken(projectId, index, "name", "姓名", contact.name, disabled)}
+            ${renderContactToken(projectId, index, "roleTitle", "角色", contact.roleTitle, disabled)}
+            ${renderContactToken(projectId, index, "departmentName", "科室", contact.departmentName, disabled)}
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function resetContactEditorState(options = {}) {
+  const projectId = String(options?.projectId || "").trim();
+  if (projectId && state.contactEditor.editingProjectId && state.contactEditor.editingProjectId !== projectId) {
+    return;
+  }
+  state.contactEditor.editingProjectId = "";
+  state.contactEditor.draftContacts = [];
+  state.contactEditor.originalContacts = [];
+  state.contactEditor.mergeActions = [];
+  state.contactEditor.saving = false;
+  clearContactLongPressTimer();
+  resetContactEditorGestureState();
+  contactLongPressState.triggered = false;
+}
+
+function startContactEditor(projectId) {
+  const normalizedProjectId = String(projectId || "").trim();
+  if (!normalizedProjectId) {
+    return;
+  }
+  const project = state.bootstrap?.projects?.find((item) => item.id === normalizedProjectId);
+  if (!project) {
+    return;
+  }
+  state.contactEditor.editingProjectId = normalizedProjectId;
+  state.contactEditor.draftContacts = toContactDraftRows(project.contacts);
+  state.contactEditor.originalContacts = toContactDraftRows(project.contacts);
+  state.contactEditor.mergeActions = [];
+  state.contactEditor.saving = false;
+  clearContactLongPressTimer();
+  resetContactEditorGestureState();
+  contactLongPressState.triggered = false;
+  renderProjectDetail();
+}
+
+function appendContactDraftRow(projectId) {
+  if (!isContactEditorActive(projectId)) {
+    return;
+  }
+  state.contactEditor.draftContacts.push({
+    id: generateTempContactId(),
+    name: "",
+    roleTitle: "",
+    departmentName: "",
+  });
+  renderProjectDetail();
+}
+
+function removeContactDraftRow(projectId, rowIndex) {
+  if (!isContactEditorActive(projectId)) {
+    return;
+  }
+  if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= state.contactEditor.draftContacts.length) {
+    return;
+  }
+  state.contactEditor.draftContacts.splice(rowIndex, 1);
+  renderProjectDetail();
+}
+
+async function saveContactEditor(projectId) {
+  if (!isContactEditorActive(projectId)) {
+    return;
+  }
+
+  let contacts;
+  let originalContacts;
+  try {
+    contacts = validateContactDraftRows(normalizeContactDraftRows(state.contactEditor.draftContacts));
+    originalContacts = normalizeContactOriginalRows(state.contactEditor.originalContacts);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "联系人内容校验失败", "warn");
+    return;
+  }
+  const mergeActions = normalizeContactMergeActions(state.contactEditor.mergeActions);
+
+  const editingProjectId = state.contactEditor.editingProjectId;
+  state.contactEditor.saving = true;
+  renderProjectDetail();
+  showToast("正在保存联系人", "busy");
+  try {
+    const response = await fetch(`/api/projects/${encodeURIComponent(editingProjectId)}/contacts`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contacts,
+        originalContacts,
+        mergeActions,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+    state.bootstrap = payload.bootstrap;
+    ensureSelection();
+    resetContactEditorState({ projectId: editingProjectId, silent: true });
+    renderAll();
+    showToast("联系人已保存", "ready");
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "联系人保存失败", "error");
+  } finally {
+    if (state.contactEditor.editingProjectId === editingProjectId) {
+      state.contactEditor.saving = false;
+      renderProjectDetail();
+    }
+  }
+}
+
 function renderProjectDetail() {
   const project = getSelectedProject();
   if (!project) {
@@ -2440,6 +3216,8 @@ function renderProjectDetail() {
   const canLeaveProjectRemarks = canCurrentUserLeaveProjectRemarks();
   const remarks = project.remarks || [];
   const contacts = project.contacts || [];
+  const isContactEditing = isContactEditorActive(project.id);
+  const contactDraftRows = isContactEditing ? state.contactEditor.draftContacts : [];
   const updates = project.updates || [];
   const remarksByUpdateId = new Map();
   for (const remark of remarks) {
@@ -2481,7 +3259,7 @@ function renderProjectDetail() {
         <strong>${escapeHtml(nextActionText)}</strong>
         <p>${escapeHtml(projectHealthText)} · ${escapeHtml(progressText)}</p>
         <div class="detail-action-meta">
-          <span>负责人 ${escapeHtml(project.owner?.name || "--")}</span>
+          <span>负责人：${escapeHtml(project.owner?.name || "--")}</span>
           <span>上级留言 ${formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount)}</span>
         </div>
       </article>
@@ -2498,25 +3276,70 @@ function renderProjectDetail() {
       <article class="detail-section detail-section-card">
         <div class="detail-section-head">
           <h4>关键联系人</h4>
-          <span>${contacts.length} λ</span>
+          <div class="detail-contact-head-actions">
+            <span>${isContactEditing ? `${contactDraftRows.length} 行` : `${contacts.length} 位`}</span>
+            <button
+              class="${isContactEditing ? "primary-button detail-contact-complete-trigger" : "chip detail-contact-edit-trigger"}"
+              type="button"
+              data-contact-action="${isContactEditing ? "save" : "edit"}"
+              data-project-id="${escapeHtml(project.id)}"
+              ${state.busy || state.followup.busy || state.contactEditor.saving ? "disabled" : ""}
+            >
+              ${state.contactEditor.saving ? "保存中..." : isContactEditing ? "完成" : "编辑"}
+            </button>
+          </div>
         </div>
-        <div class="contact-list detail-contact-list">
-          ${
-            contacts.length
-              ? contacts
-                  .map(
-                    (contact) => `
-          <article class="contact-card detail-contact-card">
-            <strong>${escapeHtml(contact.name)}</strong>
-            <span>${escapeHtml(contact.roleTitle || "角色未填写")}</span>
-            <small>${escapeHtml(contact.departmentName || "未填写科室")}</small>
-          </article>
-        `,
-                  )
-                  .join("")
-              : renderDetailEmptyState("暂无关键联系人", "当前项目尚未录入关键联系人，后续新增纪要后会自动补充。")
-          }
-        </div>
+        ${
+          isContactEditing
+            ? `
+                <div class="detail-contact-edit-panel">
+                  <p class="detail-contact-edit-hint">点击词条可编辑文本；拖拽名片覆盖超过 3/4 后松手将提示“是否覆盖”；长按名片 1 秒会轻微摆动提示可移动。</p>
+                  <div class="detail-contact-edit-list">
+                    ${renderContactEditorRows(project.id, contactDraftRows)}
+                  </div>
+                  <div class="detail-contact-edit-actions">
+                    <button
+                      class="chip"
+                      type="button"
+                      data-contact-action="add"
+                      data-project-id="${escapeHtml(project.id)}"
+                      ${state.busy || state.followup.busy || state.contactEditor.saving ? "disabled" : ""}
+                    >
+                      新增名片
+                    </button>
+                    <button
+                      class="chip"
+                      type="button"
+                      data-contact-action="cancel"
+                      data-project-id="${escapeHtml(project.id)}"
+                      ${state.contactEditor.saving ? "disabled" : ""}
+                    >
+                      退出编辑
+                    </button>
+                  </div>
+                </div>
+              `
+            : `
+                <div class="contact-list detail-contact-list">
+                  ${
+                    contacts.length
+                      ? contacts
+                          .map(
+                            (contact) => `
+                      <article class="contact-card detail-contact-card" data-contact-card="true" data-project-id="${escapeHtml(project.id)}">
+                        <strong>${escapeHtml(contact.name)}</strong>
+                        <span>${escapeHtml(contact.roleTitle || "角色未填写")}</span>
+                        <small>${escapeHtml(contact.departmentName || "未填写科室")}</small>
+                      </article>
+                    `,
+                          )
+                          .join("")
+                      : renderDetailEmptyState("暂无关键联系人", "当前项目尚未录入关键联系人，后续新增纪要后会自动补充。")
+                  }
+                </div>
+                <p class="detail-contact-longpress-hint">长按联系人卡片 1 秒可快速进入编辑模式。</p>
+              `
+        }
       </article>
 
       <article class="detail-section detail-section-card">
@@ -2691,7 +3514,7 @@ function renderTimelineRemarkRows(remarks) {
                         <p>${escapeHtml(replyContent)}</p>
                       </div>
                     `
-                    : '<p class="remark-status is-pending">该条留言尚未回复，可从这里进入回复模式。</p>'
+                    : '<p class="remark-status is-pending">该留言尚未回复，可点击右侧按钮立即回复。</p>'
                 }
                 <div class="timeline-remark-foot">
                   <small class="timeline-remark-read">${escapeHtml(readMetaText)}</small>
@@ -2803,7 +3626,7 @@ function clearSupplementContext() {
 function startSupplementFromRemark(remarkId) {
   const matched = findRemarkFromBootstrap(remarkId);
   if (!matched) {
-    showToast("未找到对应留言", "error");
+    showToast("未找到该条留言", "error");
     return;
   }
 
@@ -2905,8 +3728,8 @@ function renderSupplementDialog() {
   }
   if (elements.supplementDialogCopy) {
     elements.supplementDialogCopy.textContent = isReplyMode
-      ? "补充内容会并入本次回复纪要的下一次生成。保存后当前回复摘要会失效，需要重新生成"
-      : "补充内容会并入普通纪要的下一次生成。保存后当前结果会失效，需要重新生成";
+      ? "补充内容会并入本次回复纪要的下一次生成。保存后当前回复摘要会失效，需要重新生成。"
+      : "补充内容会并入普通纪要的下一次生成。保存后当前结果会失效，需要重新生成。";
   }
   if (elements.supplementDialogTextarea && elements.supplementDialogTextarea.value !== state.supplement.draftText) {
     elements.supplementDialogTextarea.value = state.supplement.draftText;
@@ -3075,7 +3898,7 @@ function renderInsights() {
   const summaryContent = `
     <section class="insight-section">
       <h3>管理汇总</h3>
-      <p class="section-copy">按阶段分布与高频问题汇总当前项目状态。</p>
+      <p class="section-copy">按阶段分布与高频问题汇总当前项目状态，支持管理判断与资源配置。</p>
       <section class="insight-sub-section">
         <h4>阶段分布</h4>
         ${dashboard.stageDistribution.map((item) => renderBarRow(item.label, item.value, dashboard.totalProjects)).join("")}
@@ -3150,7 +3973,7 @@ function renderInsights() {
   }
 
   elements.insightPanel.innerHTML = `
-    <div class="insight-subtab-bar" role="tablist" aria-label="汇总子导航">
+    <div class="insight-subtab-bar" role="tablist" aria-label="姹囨€诲瓙瀵艰埅">
       ${subTabs
         .map(
           (tab) => `
@@ -3252,7 +4075,7 @@ function renderBackupAdminPanel(canManageBackups) {
         <div>
           <h4>数据备份</h4>
           <p class="backup-copy">${escapeHtml(scheduleText)}，最多保留 ${maxBackups} 份，当前 ${backups.length} 份。</p>
-          <p class="backup-meta">上次执行：${lastRunText} · 下次执行：${nextRunText}</p>
+          <p class="backup-meta">上次执行时间：${lastRunText} · 下次执行时间：${nextRunText}</p>
         </div>
         <button class="chip" type="button" data-backup-action="create" ${actionDisabled ? "disabled" : ""}>立即备份</button>
       </div>
@@ -3432,7 +4255,7 @@ function getSelectedProject() {
 }
 
 function applyHealthState(health) {
-  document.title = health.configured ? "AI 医院导入管理系统" : "AI 医院导入管理系统 · 接口未配置";
+  document.title = health.configured ? "智能医院导入管理系统" : "智能医院导入管理系统 · 接口未配置";
 }
 
 function setBusy(isBusy) {
@@ -3522,6 +4345,7 @@ function openProjectLedgerDetail(projectId) {
   persistSelection();
   persistActiveTab();
   persistLedgerSubTab();
+  resetContactEditorState({ silent: true });
   resetFollowupState();
   resetHistoryInfoState();
   renderAll();
@@ -3797,6 +4621,7 @@ function handleUnauthorized(message = "登录已失效，请重新登录") {
   state.lastResult = null;
   state.intakePreviewFingerprint = "";
   clearSupplementContext();
+  resetContactEditorState({ silent: true });
   resetFollowupState();
   resetHistoryInfoState();
   resetBackupState();
@@ -3907,5 +4732,6 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
 
 
