@@ -11,23 +11,25 @@ import paramiko
 
 
 REQUIRED_ROOT_FILES = [
-    ".dockerignore",
-    "Dockerfile",
     "docker-compose.yml",
-    "package.json",
-    "package-lock.json",
     "server.js",
-    "README.md",
 ]
 REQUIRED_PUBLIC_FILES = [
     "public/index.html",
     "public/app.js",
     "public/styles.css",
 ]
-REQUIRED_DATA_FILES = [
+REQUIRED_RUNTIME_DIRECTORIES = [
+    "server",
+    "public",
+]
+REQUIRED_STATIC_DATA_FILES = [
     "data/intake-schema.json",
     "data/followup-questions-schema.json",
     "data/seed-store.json",
+]
+PRESERVED_REMOTE_RUNTIME_FILES = [
+    "data/store.json",
 ]
 
 
@@ -76,6 +78,16 @@ def upload_file(sftp: paramiko.SFTPClient, local: Path, remote: str) -> None:
     print(f"> [upload] {local} -> {remote}")
 
 
+def upload_dir(sftp: paramiko.SFTPClient, local_dir: Path, remote_dir: str) -> None:
+    ensure_remote_dir(sftp, remote_dir)
+    for entry in sorted(local_dir.iterdir(), key=lambda item: item.name):
+        remote_path = posixpath.join(remote_dir, entry.name)
+        if entry.is_dir():
+            upload_dir(sftp, entry, remote_path)
+            continue
+        upload_file(sftp, entry, remote_path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Deploy TangProject to Aliyun via Paramiko (password auth).")
     parser.add_argument("--repo-root", required=True)
@@ -85,6 +97,7 @@ def main() -> int:
     parser.add_argument("--server-user", default="root")
     parser.add_argument("--remote-dir", required=True)
     parser.add_argument("--service-port", type=int, default=3000)
+    parser.add_argument("--deploy-mode", choices=("code-sync", "rebuild"), default="code-sync")
     parser.add_argument("--password-env-var", default="ALIYUN_SSH_PASSWORD")
     args = parser.parse_args()
 
@@ -96,11 +109,24 @@ def main() -> int:
             f"Missing SSH password in environment variable {args.password_env_var}."
         )
 
-    all_files = REQUIRED_ROOT_FILES + REQUIRED_PUBLIC_FILES + REQUIRED_DATA_FILES
+    required_files = REQUIRED_ROOT_FILES + REQUIRED_PUBLIC_FILES + REQUIRED_STATIC_DATA_FILES
+    if args.deploy_mode == "rebuild":
+        required_files += [
+            ".dockerignore",
+            "Dockerfile",
+            "package.json",
+            "package-lock.json",
+        ]
+
+    all_files = required_files
     for rel in all_files:
         path = repo_root / rel
         if not path.is_file():
             raise RuntimeError(f"Missing required file before upload: {path}")
+    for rel in REQUIRED_RUNTIME_DIRECTORIES:
+        path = repo_root / rel
+        if not path.is_dir():
+            raise RuntimeError(f"Missing required directory before upload: {path}")
     if not deploy_env_file.is_file():
         raise RuntimeError(f"Missing deploy env file before upload: {deploy_env_file}")
 
@@ -127,7 +153,8 @@ def main() -> int:
             "command -v docker >/dev/null 2>&1 || { echo 'ERROR: docker is required on remote host.' >&2; exit 31; }; "
             "docker compose version >/dev/null 2>&1 || { echo 'ERROR: docker compose plugin is required on remote host.' >&2; exit 32; }; "
             "command -v curl >/dev/null 2>&1 || { echo 'ERROR: curl is required on remote host.' >&2; exit 33; }; "
-            f"mkdir -p {remote_dir_q}/public {remote_dir_q}/data"
+            f"rm -rf {remote_dir_q}/server {remote_dir_q}/public; "
+            f"mkdir -p {remote_dir_q}/server {remote_dir_q}/public {remote_dir_q}/data"
         )
         run_remote_checked(client, prep_cmd, "Remote prerequisite check")
 
@@ -135,24 +162,47 @@ def main() -> int:
         try:
             for rel in REQUIRED_ROOT_FILES:
                 upload_file(sftp, repo_root / rel, posixpath.join(args.remote_dir, rel))
-            for rel in REQUIRED_PUBLIC_FILES:
-                remote = posixpath.join(args.remote_dir, rel.replace("\\", "/"))
-                upload_file(sftp, repo_root / rel, remote)
-            for rel in REQUIRED_DATA_FILES:
+            if args.deploy_mode == "rebuild":
+                for rel in [".dockerignore", "Dockerfile", "package.json", "package-lock.json"]:
+                    upload_file(sftp, repo_root / rel, posixpath.join(args.remote_dir, rel))
+            upload_dir(sftp, repo_root / "server", posixpath.join(args.remote_dir, "server"))
+            upload_dir(sftp, repo_root / "public", posixpath.join(args.remote_dir, "public"))
+            for rel in REQUIRED_STATIC_DATA_FILES:
                 remote = posixpath.join(args.remote_dir, rel.replace("\\", "/"))
                 upload_file(sftp, repo_root / rel, remote)
             upload_file(sftp, deploy_env_file, posixpath.join(args.remote_dir, ".env.deploy"))
         finally:
             sftp.close()
 
-        deploy_cmd = (
-            "set -euo pipefail; "
-            f"cd {remote_dir_q}; "
-            "cp .env.deploy .env.example; "
-            "docker compose build --no-cache tang-project; "
-            "docker compose up -d --force-recreate tang-project; "
-            "docker compose ps tang-project"
+        print(
+            "> [preserve] remote runtime data is not uploaded: "
+            + ", ".join(PRESERVED_REMOTE_RUNTIME_FILES)
         )
+
+        if args.deploy_mode == "rebuild":
+            deploy_cmd = (
+                "set -euo pipefail; "
+                f"cd {remote_dir_q}; "
+                "cp .env.deploy .env.example; "
+                "docker compose build --no-cache tang-project; "
+                "docker compose up -d --force-recreate tang-project; "
+                "docker compose ps tang-project"
+            )
+        else:
+            deploy_cmd = (
+                "set -euo pipefail; "
+                f"cd {remote_dir_q}; "
+                "cp .env.deploy .env.example; "
+                "docker image inspect local/tang-project:latest >/dev/null 2>&1 || "
+                "{ echo 'ERROR: local/tang-project:latest is missing on remote host. Use --deploy-mode rebuild.' >&2; exit 41; }; "
+                "docker compose up -d --force-recreate --no-build tang-project; "
+                "docker exec tang-project sh -lc 'rm -rf /app/server /app/public && mkdir -p /app/server /app/public'; "
+                f"docker cp {remote_dir_q}/server.js tang-project:/app/server.js; "
+                f"docker cp {remote_dir_q}/server/. tang-project:/app/server/; "
+                f"docker cp {remote_dir_q}/public/. tang-project:/app/public/; "
+                "docker restart tang-project; "
+                "docker compose ps tang-project"
+            )
         run_remote_checked(client, deploy_cmd, "Remote deploy")
 
         internal_health_cmd = f"curl -fsS http://127.0.0.1:{args.service_port}/api/health"

@@ -4,6 +4,104 @@ const AUTH_TOKEN_KEY = "clinical-rollout-auth-token";
 const INSIGHT_SUBTAB_KEY = "clinical-rollout-insight-subtab";
 const LEDGER_SUBTAB_KEY = "clinical-rollout-ledger-subtab";
 
+const uiTextUtils = window.UiTextUtils;
+if (!uiTextUtils) {
+  throw new Error("UiTextUtils is required");
+}
+const {
+  formatDate,
+  formatDateTime,
+  formatRemarkRatio,
+  escapeSelectorValue,
+  formatDateInput,
+  escapeHtml,
+  normalizeDisplayText,
+  escapeDisplayHtml,
+} = uiTextUtils;
+const domainFormatters = window.DomainFormatters;
+if (!domainFormatters) {
+  throw new Error("DomainFormatters is required");
+}
+const {
+  formatRiskLevelLabel,
+  getProjectTaskSortKey,
+  formatProjectTaskTime,
+  formatTaskStatusLabel,
+  normalizeUserRole,
+} = domainFormatters;
+const followupHistoryUtils = window.FollowupHistoryUtils;
+if (!followupHistoryUtils) {
+  throw new Error("FollowupHistoryUtils is required");
+}
+const {
+  normalizeHistoryInfoSessions,
+  formatScenarioSnapshot,
+  normalizeFollowupHistory,
+  normalizeFollowupQuestions,
+  getPendingFollowupQuestions,
+} = followupHistoryUtils;
+const contactEditorUtils = window.ContactEditorUtils;
+if (!contactEditorUtils) {
+  throw new Error("ContactEditorUtils is required");
+}
+const {
+  toContactDraftRows,
+  normalizeContactDraftRows,
+  validateContactDraftRows,
+  normalizeContactMergeActions,
+  normalizeContactOriginalRows,
+  generateTempContactId,
+} = contactEditorUtils;
+const insightBackupUtils = window.InsightBackupUtils;
+if (!insightBackupUtils) {
+  throw new Error("InsightBackupUtils is required");
+}
+const {
+  normalizeLedgerSubTab,
+  normalizeInsightSubTab,
+  resolveBackupPanelState,
+  formatBackupSchedule,
+} = insightBackupUtils;
+const uiRenderUtils = window.UiRenderUtils;
+if (!uiRenderUtils) {
+  throw new Error("UiRenderUtils is required");
+}
+const {
+  renderTaskCard,
+  renderSignalGroup,
+  renderBarRow,
+  renderTagList,
+} = uiRenderUtils;
+const insightContentUtils = window.InsightContentUtils;
+if (!insightContentUtils) {
+  throw new Error("InsightContentUtils is required");
+}
+const {
+  renderInsightSummaryContent,
+  renderInsightRecentContent,
+  renderInsightManagementContent,
+} = insightContentUtils;
+const managementBackupRenderUtils = window.ManagementBackupRenderUtils;
+if (!managementBackupRenderUtils) {
+  throw new Error("ManagementBackupRenderUtils is required");
+}
+const { renderManagementUserItemMarkup, renderBackupAdminPanelMarkup } = managementBackupRenderUtils;
+const panelRenderUtils = window.PanelRenderUtils;
+if (!panelRenderUtils) {
+  throw new Error("PanelRenderUtils is required");
+}
+const { renderTaskBoardMarkup, renderInsightPanelMarkup } = panelRenderUtils;
+const projectSelectionUtils = window.ProjectSelectionUtils;
+if (!projectSelectionUtils) {
+  throw new Error("ProjectSelectionUtils is required");
+}
+const { getVisibleProjectsByKeyword, resolveSelectedProjectId } = projectSelectionUtils;
+const tabRenderUtils = window.TabRenderUtils;
+if (!tabRenderUtils) {
+  throw new Error("TabRenderUtils is required");
+}
+const { resolveActiveMainTab, applyMainTabs, applyLedgerSubTabs } = tabRenderUtils;
+
 const elements = {
   appShell: document.querySelector("#appShell"),
   toast: document.querySelector("#toast"),
@@ -28,10 +126,14 @@ const elements = {
   projectAddButton: document.querySelector("#projectAddButton"),
   projectSearchButton: document.querySelector("#projectSearchButton"),
   projectStageText: document.querySelector("#projectStageText"),
+  departmentInput: document.querySelector("#departmentInput"),
+  departmentSuggestions: document.querySelector("#departmentSuggestions"),
   projectModal: document.querySelector("#projectModal"),
   projectModalForm: document.querySelector("#projectModalForm"),
   projectModalCloseButton: document.querySelector("#projectModalCloseButton"),
   newHospitalNameInput: document.querySelector("#newHospitalNameInput"),
+  newProjectDepartmentInput: document.querySelector("#newProjectDepartmentInput"),
+  newProjectDepartmentSuggestions: document.querySelector("#newProjectDepartmentSuggestions"),
   newHospitalCityInput: document.querySelector("#newHospitalCityInput"),
   newProjectSubmitButton: document.querySelector("#newProjectSubmitButton"),
   noteInput: document.querySelector("#noteInput"),
@@ -65,6 +167,24 @@ const elements = {
   historyInfoDialogCloseButton: document.querySelector("#historyInfoDialogCloseButton"),
   historyInfoDialogRefreshButton: document.querySelector("#historyInfoDialogRefreshButton"),
   historyInfoDialogList: document.querySelector("#historyInfoDialogList"),
+  taskDueDialog: document.querySelector("#taskDueDialog"),
+  taskDueDialogForm: document.querySelector("#taskDueDialogForm"),
+  taskDueDialogTitle: document.querySelector("#taskDueDialogTitle"),
+  taskDueDialogCopy: document.querySelector("#taskDueDialogCopy"),
+  taskDueDialogMeta: document.querySelector("#taskDueDialogMeta"),
+  taskDueDialogDateInput: document.querySelector("#taskDueDialogDateInput"),
+  taskDueDialogCloseButton: document.querySelector("#taskDueDialogCloseButton"),
+  taskDueDialogCancelButton: document.querySelector("#taskDueDialogCancelButton"),
+  taskDueDialogSubmitButton: document.querySelector("#taskDueDialogSubmitButton"),
+  taskRecordDialog: document.querySelector("#taskRecordDialog"),
+  taskRecordDialogForm: document.querySelector("#taskRecordDialogForm"),
+  taskRecordDialogTitle: document.querySelector("#taskRecordDialogTitle"),
+  taskRecordDialogCopy: document.querySelector("#taskRecordDialogCopy"),
+  taskRecordDialogList: document.querySelector("#taskRecordDialogList"),
+  taskRecordDialogTextarea: document.querySelector("#taskRecordDialogTextarea"),
+  taskRecordDialogCloseButton: document.querySelector("#taskRecordDialogCloseButton"),
+  taskRecordDialogCancelButton: document.querySelector("#taskRecordDialogCancelButton"),
+  taskRecordDialogSubmitButton: document.querySelector("#taskRecordDialogSubmitButton"),
   authDialog: document.querySelector("#authDialog"),
   authDialogTitle: document.querySelector("#authDialogTitle"),
   authDialogCopy: document.querySelector("#authDialogCopy"),
@@ -109,6 +229,10 @@ const state = {
   projectSearchOpen: false,
   projectModalOpen: false,
   intakePreviewFingerprint: "",
+  intakePreviewStaleReason: "",
+  intakeDepartment: {
+    projectId: "",
+  },
   remarkCursorByProject: {},
   activeRemarkId: "",
   supplement: {
@@ -116,7 +240,6 @@ const state = {
     updateId: "",
     sourceText: "",
     sourceDate: "",
-    sourceDepartment: "",
     savedText: "",
     draftText: "",
     savedAt: "",
@@ -171,6 +294,24 @@ const state = {
     mergeActions: [],
     saving: false,
   },
+  taskBoard: {
+    projectFilterId: "",
+    projectKeyword: "",
+    projectSearchOpen: false,
+    activeGroup: "overdue",
+    sortField: "dueAt",
+    sortDirection: "asc",
+  },
+  taskDueDialog: {
+    dialogOpen: false,
+    taskId: "",
+    draftDate: "",
+  },
+  taskRecordDialog: {
+    dialogOpen: false,
+    taskId: "",
+    draftContent: "",
+  },
   projectDetailTaskListExpandedProjectId: "",
 };
 
@@ -209,10 +350,10 @@ const ENTRY_MODE_COPY = {
   default: {
     eyebrow: "录入",
     title: "纪要录入",
-    copy: "录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议",
+    copy: "录入一线医院推进纪要，系统自动提取联系人、问题标签、阶段变化与任务建议",
     visitDateLabel: "拜访日期",
     noteLabel: "原始推进记录",
-    notePlaceholder: "请描述本次医院推进记录，例如：拜访科室、关键联系人、反馈意见、阻塞点、下一步计划与所需支持",
+    notePlaceholder: "请描述本次医院推进记录，例如：关键联系人、反馈意见、阻塞点、下一步计划与所需支持",
     hint: "建议记录完整业务信息，以便系统准确生成项目更新与任务动作",
   },
   reply: {
@@ -225,6 +366,30 @@ const ENTRY_MODE_COPY = {
     hint: "建议补全留言处理过程，以便系统准确生成后续纪要与任务动作",
   },
 };
+
+function getScopedProjectSelectionKey(user = state.bootstrap?.currentUser) {
+  const userId = String(user?.id || "").trim();
+  return userId ? `${STORAGE_KEY}:${userId}` : STORAGE_KEY;
+}
+
+function readPersistedSelection(user = state.bootstrap?.currentUser) {
+  const userId = String(user?.id || "").trim();
+  if (userId) {
+    return localStorage.getItem(getScopedProjectSelectionKey(user)) || "";
+  }
+  return localStorage.getItem(STORAGE_KEY) || "";
+}
+
+function applyBootstrapPayload(bootstrap, options = {}) {
+  state.bootstrap = bootstrap || null;
+  if (!state.bootstrap) {
+    state.selectedProjectId = "";
+    return;
+  }
+  if (options.restoreSelection) {
+    state.selectedProjectId = readPersistedSelection(state.bootstrap.currentUser);
+  }
+}
 
 const nativeFetch = window.fetch.bind(window);
 window.fetch = async (input, init = {}) => {
@@ -314,9 +479,27 @@ elements.intakeResult.addEventListener("click", async (event) => {
     toggleIntakeReviewItem(reviewSection, reviewItemId);
     return;
   }
+  if (action === "toggle-action-contact") {
+    const reviewItemId = String(button.dataset.intakeReviewId || "");
+    const contactId = String(button.dataset.contactId || "");
+    toggleIntakeActionRelatedContact(reviewItemId, contactId);
+    return;
+  }
   if (action === "submit") {
     await commitIntake();
   }
+});
+
+elements.intakeResult.addEventListener("change", (event) => {
+  const select = event.target.closest("select[data-intake-contact-select][data-intake-contact-id]");
+  if (!select) {
+    return;
+  }
+  const reviewContactId = String(select.dataset.intakeContactId || "").trim();
+  if (!reviewContactId) {
+    return;
+  }
+  updateIntakeContactSelection(reviewContactId, String(select.value || "").trim());
 });
 
 elements.supplementButton?.addEventListener("click", () => {
@@ -407,6 +590,12 @@ document.addEventListener("keydown", (event) => {
   if (state.historyInfo.dialogOpen) {
     closeHistoryInfoDialog();
   }
+  if (state.taskDueDialog.dialogOpen) {
+    closeTaskDueDialog();
+  }
+  if (state.taskRecordDialog.dialogOpen) {
+    closeTaskRecordDialog();
+  }
 });
 
 elements.aiFollowupButton.addEventListener("click", async () => {
@@ -445,11 +634,58 @@ elements.historyInfoDialogRefreshButton?.addEventListener("click", async () => {
   await loadHistoryInfo(true);
 });
 
+elements.taskDueDialogForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await submitTaskDueDate();
+});
+
+elements.taskDueDialogCloseButton?.addEventListener("click", () => {
+  closeTaskDueDialog();
+});
+
+elements.taskDueDialogCancelButton?.addEventListener("click", () => {
+  closeTaskDueDialog();
+});
+
+elements.taskDueDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.taskDueDialog) {
+    closeTaskDueDialog();
+  }
+});
+
+elements.taskDueDialogDateInput?.addEventListener("input", () => {
+  state.taskDueDialog.draftDate = String(elements.taskDueDialogDateInput.value || "").trim();
+});
+
+elements.taskRecordDialogForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await submitTaskRecord();
+});
+
+elements.taskRecordDialogCloseButton?.addEventListener("click", () => {
+  closeTaskRecordDialog();
+});
+
+elements.taskRecordDialogCancelButton?.addEventListener("click", () => {
+  closeTaskRecordDialog();
+});
+
+elements.taskRecordDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.taskRecordDialog) {
+    closeTaskRecordDialog();
+  }
+});
+
+elements.taskRecordDialogTextarea?.addEventListener("input", () => {
+  state.taskRecordDialog.draftContent = String(elements.taskRecordDialogTextarea.value || "");
+});
+
 elements.historyInfoDialogList?.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-history-action='continue'][data-history-session-id]");
+  const button = event.target.closest("button[data-history-action][data-history-session-id]");
   if (!button) {
     return;
   }
+  const action = String(button.dataset.historyAction || "").trim();
   const historySessionId = String(button.dataset.historySessionId || "").trim();
   if (!historySessionId || state.historyInfo.busy || state.followup.busy || state.busy) {
     return;
@@ -459,13 +695,29 @@ elements.historyInfoDialogList?.addEventListener("click", async (event) => {
     showToast("历史信息已变化，请刷新后重试", "warn");
     return;
   }
-  if (!String(elements.noteInput.value || "").trim() && matchedSession.seedNote) {
-    elements.noteInput.value = matchedSession.seedNote;
-    invalidateIntakePreview();
-    renderIntakeSubmitButton();
+  if (action === "continue") {
+    if (!String(elements.noteInput.value || "").trim() && matchedSession.seedNote) {
+      elements.noteInput.value = matchedSession.seedNote;
+      invalidateIntakePreview();
+      renderIntakeSubmitButton();
+    }
+    closeHistoryInfoDialog();
+    await openFollowupDialogByGeneratingQuestions({ historySessionId });
+    return;
   }
-  closeHistoryInfoDialog();
-  await openFollowupDialogByGeneratingQuestions({ historySessionId });
+  if (action === "remark") {
+    const historyQuestionId = String(button.dataset.historyQuestionId || "").trim();
+    if (!historyQuestionId) {
+      showToast("历史条目标识缺失，请刷新后重试", "warn");
+      return;
+    }
+    await createProjectRemarkFromHistoryEntry({
+      historySessionId,
+      historyQuestionId,
+      session: matchedSession,
+    });
+    return;
+  }
 });
 
 elements.logoutButton.addEventListener("click", async () => {
@@ -529,6 +781,16 @@ elements.followupDialogQuestionList.addEventListener("input", (event) => {
 });
 
 elements.projectList.addEventListener("click", (event) => {
+  const taskCenterTrigger = event.target.closest("[data-open-task-center-project]");
+  if (taskCenterTrigger) {
+    event.preventDefault();
+    event.stopPropagation();
+    openTaskCenter(taskCenterTrigger.dataset.openTaskCenterProject, {
+      groupId: taskCenterTrigger.dataset.openTaskCenterGroup,
+    });
+    return;
+  }
+
   const remarkTrigger = event.target.closest("[data-remark-focus-project]");
   if (remarkTrigger) {
     event.preventDefault();
@@ -555,6 +817,16 @@ elements.projectList.addEventListener("click", (event) => {
 });
 
 elements.projectDetail.addEventListener("click", async (event) => {
+  const taskCenterTrigger = event.target.closest("[data-open-task-center-project]");
+  if (taskCenterTrigger) {
+    event.preventDefault();
+    event.stopPropagation();
+    openTaskCenter(taskCenterTrigger.dataset.openTaskCenterProject, {
+      groupId: taskCenterTrigger.dataset.openTaskCenterGroup,
+    });
+    return;
+  }
+
   const longPressCard = event.target.closest("[data-contact-card]");
   if (contactLongPressState.triggered && longPressCard) {
     event.preventDefault();
@@ -598,7 +870,6 @@ elements.projectDetail.addEventListener("click", async (event) => {
     const fieldLabelMap = {
       name: "姓名",
       roleTitle: "角色",
-      departmentName: "科室",
     };
     const fieldLabel = fieldLabelMap[field] || "词条";
     const currentValue = String(row[field] || "");
@@ -640,6 +911,9 @@ elements.projectDetail.addEventListener("click", async (event) => {
       if (state.contactEditor.saving) {
         return;
       }
+      if (hasContactEditorChanges(projectId) && !window.confirm("是否放弃编辑")) {
+        return;
+      }
       resetContactEditorState({ projectId, silent: true });
       renderProjectDetail();
       return;
@@ -655,8 +929,7 @@ elements.projectDetail.addEventListener("click", async (event) => {
       if (state.busy || state.followup.busy || state.contactEditor.saving) {
         return;
       }
-      const rowIndex = Number(contactActionButton.dataset.contactIndex);
-      removeContactDraftRow(projectId, rowIndex);
+      showToast("编辑状态下不能删除联系人，请通过覆盖合并", "warn");
       return;
     }
     return;
@@ -708,7 +981,8 @@ elements.projectDetail.addEventListener("click", async (event) => {
     return;
   }
 
-  await createProjectRemark(projectId);
+  const updateId = String(createRemarkButton.dataset.updateId || "");
+  await createProjectRemark(projectId, { updateId });
 });
 
 elements.projectDetail.addEventListener("pointerdown", (event) => {
@@ -719,16 +993,21 @@ elements.projectDetail.addEventListener("pointerdown", (event) => {
     return;
   }
 
-  const editContactCard = event.target.closest("[data-contact-edit-card][data-contact-index][data-project-id]");
-  if (editContactCard) {
-    const projectId = String(editContactCard.dataset.projectId || "").trim();
-    if (isContactEditorActive(projectId)) {
-      if (event.target.closest("button[data-contact-action='remove']")) {
-        return;
-      }
-      beginContactEditorCardGesture(event, editContactCard);
+  const dragHandle = event.target.closest(
+    "button[data-contact-drag-handle][data-contact-index][data-project-id]",
+  );
+  if (dragHandle) {
+    const editContactCard = dragHandle.closest(
+      "[data-contact-edit-card][data-contact-index][data-project-id]",
+    );
+    if (!editContactCard) {
       return;
     }
+    const projectId = String(editContactCard.dataset.projectId || "").trim();
+    if (isContactEditorActive(projectId)) {
+      beginContactEditorCardGesture(event, editContactCard);
+    }
+    return;
   }
 
   const contactCard = event.target.closest("[data-contact-card][data-project-id]");
@@ -788,7 +1067,7 @@ elements.projectDetail.addEventListener("input", (event) => {
   if (!row) {
     return;
   }
-  if (field === "name" || field === "roleTitle" || field === "departmentName") {
+  if (field === "name" || field === "roleTitle") {
     row[field] = value;
   }
 });
@@ -803,12 +1082,85 @@ elements.signalPanel.addEventListener("click", (event) => {
 });
 
 elements.taskBoard.addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-task-id][data-task-status]");
-  if (!button || state.busy) {
+  const filterResetButton = event.target.closest("button[data-task-reset-filter]");
+  if (filterResetButton) {
+    state.taskBoard.projectFilterId = "";
+    state.taskBoard.projectKeyword = "";
+    state.taskBoard.projectSearchOpen = false;
+    state.taskBoard.activeGroup = resolveDefaultTaskBoardGroup(getTaskBoardFilteredTasks());
+    renderTaskBoard();
     return;
   }
 
-  await updateTaskStatus(button.dataset.taskId, button.dataset.taskStatus);
+  const searchToggleButton = event.target.closest("button[data-task-toggle-search]");
+  if (searchToggleButton) {
+    state.taskBoard.projectSearchOpen = !state.taskBoard.projectSearchOpen;
+    if (!state.taskBoard.projectSearchOpen) {
+      state.taskBoard.projectKeyword = "";
+    }
+    renderTaskBoard();
+    return;
+  }
+
+  const groupButton = event.target.closest("button[data-task-group]");
+  if (groupButton) {
+    state.taskBoard.activeGroup = String(groupButton.dataset.taskGroup || "todo");
+    renderTaskBoard();
+    return;
+  }
+
+  const sortFieldButton = event.target.closest("button[data-task-sort-field-toggle]");
+  if (sortFieldButton) {
+    state.taskBoard.sortField = state.taskBoard.sortField === "startAt" ? "dueAt" : "startAt";
+    renderTaskBoard();
+    return;
+  }
+
+  const sortDirectionButton = event.target.closest("button[data-task-sort-direction-toggle]");
+  if (sortDirectionButton) {
+    state.taskBoard.sortDirection = state.taskBoard.sortDirection === "desc" ? "asc" : "desc";
+    renderTaskBoard();
+    return;
+  }
+
+  const dueDialogButton = event.target.closest("button[data-task-action='due-dialog'][data-task-id]");
+  if (dueDialogButton) {
+    openTaskDueDialog(dueDialogButton.dataset.taskId);
+    return;
+  }
+
+  const recordDialogButton = event.target.closest("button[data-task-action='record-dialog'][data-task-id]");
+  if (recordDialogButton) {
+    openTaskRecordDialog(recordDialogButton.dataset.taskId);
+    return;
+  }
+
+  const button = event.target.closest("button[data-task-id][data-task-status]");
+  if (button && !state.busy) {
+    await updateTaskStatus(button.dataset.taskId, button.dataset.taskStatus);
+  }
+});
+
+elements.taskBoard.addEventListener("change", (event) => {
+  const select = event.target.closest("select[data-task-project-filter]");
+  if (!select) {
+    return;
+  }
+
+  state.taskBoard.projectFilterId = String(select.value || "").trim();
+  state.taskBoard.projectKeyword = "";
+  state.taskBoard.projectSearchOpen = false;
+  state.taskBoard.activeGroup = resolveDefaultTaskBoardGroup(getTaskBoardFilteredTasks());
+  renderTaskBoard();
+});
+
+elements.taskBoard.addEventListener("input", (event) => {
+  const input = event.target.closest("input[data-task-project-search]");
+  if (!input) {
+    return;
+  }
+  state.taskBoard.projectKeyword = String(input.value || "");
+  renderTaskBoard();
 });
 
 elements.insightPanel.addEventListener("click", async (event) => {
@@ -850,7 +1202,9 @@ elements.insightPanel.addEventListener("click", async (event) => {
     if (!backupDate) {
       return;
     }
-    const confirmedRestore = window.confirm(`确认恢复 ${backupDate} 的最新备份吗？恢复后所有用户会被强制下线。`);
+    const confirmedRestore = window.confirm(
+      `确认恢复 ${formatDate(backupDate)} 的最新备份吗？恢复后所有用户会被强制下线。`,
+    );
     if (!confirmedRestore) {
       return;
     }
@@ -858,7 +1212,7 @@ elements.insightPanel.addEventListener("click", async (event) => {
     return;
   }
 
-  const button = event.target.closest("button[data-management-action='save-region'][data-user-id]");
+  const button = event.target.closest("button[data-management-action='save-user'][data-user-id]");
   if (!button || state.busy || state.auth.busy) {
     return;
   }
@@ -869,13 +1223,26 @@ elements.insightPanel.addEventListener("click", async (event) => {
   const select = elements.insightPanel.querySelector(`select[data-management-region-select="${escapeSelectorValue(userId)}"]`);
   const regionId = String(select?.value || "").trim();
   if (!regionId) {
-    showToast("璇烽€夋嫨鍖哄煙鍚庡啀淇濆瓨", "warn");
+    showToast("请选择区域后再保存", "warn");
     return;
   }
-  await updateUserRegion(userId, regionId);
+  const supervisorSelect = elements.insightPanel.querySelector(
+    `select[data-management-supervisor-select="${escapeSelectorValue(userId)}"]`,
+  );
+  const supervisorUserId = String(supervisorSelect?.value || "").trim();
+  await updateManagedUser(userId, { regionId, supervisorUserId });
 });
 
 elements.insightPanel.addEventListener("change", (event) => {
+  const managementRegionSelect = event.target.closest("select[data-management-region-select]");
+  if (managementRegionSelect) {
+    const userId = String(managementRegionSelect.dataset.managementRegionSelect || "").trim();
+    if (userId) {
+      syncManagementSupervisorSelect(userId);
+    }
+    return;
+  }
+
   const dateSelect = event.target.closest("select[data-backup-date-select]");
   if (dateSelect) {
     state.backups.selectedDate = String(dateSelect.value || "").trim();
@@ -939,10 +1306,11 @@ async function loadBootstrap(preserveResult) {
     if (!response.ok) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
-    state.bootstrap = payload;
+    applyBootstrapPayload(payload, { restoreSelection: true });
     ensureSelection();
     if (!preserveResult) {
       state.lastResult = null;
+      state.intakePreviewStaleReason = "";
     }
     renderAll();
     applyHealthState(payload.health);
@@ -960,6 +1328,7 @@ async function createProjectQuickly() {
   }
 
   const hospitalName = elements.newHospitalNameInput.value.trim();
+  const departmentName = normalizeDepartmentInputValue(elements.newProjectDepartmentInput?.value || "");
   const city = elements.newHospitalCityInput.value.trim();
   if (!hospitalName) {
     showToast("请先填写医院名称", "warn");
@@ -975,6 +1344,7 @@ async function createProjectQuickly() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         hospitalName,
+        departmentName: departmentName || undefined,
         city,
       }),
     });
@@ -983,7 +1353,7 @@ async function createProjectQuickly() {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
 
-    state.bootstrap = payload.bootstrap;
+    applyBootstrapPayload(payload.bootstrap);
     state.selectedProjectId = payload.project.id;
     state.projectKeyword = "";
     elements.projectSearchInput.value = "";
@@ -993,6 +1363,10 @@ async function createProjectQuickly() {
     resetFollowupState();
     closeProjectModal({ force: true });
     renderAll();
+    if (departmentName && elements.departmentInput) {
+      elements.departmentInput.value = departmentName;
+      state.intakeDepartment.projectId = payload.project.id;
+    }
     showToast("医院项目已新增", "ready");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "新增医院项目失败", "error");
@@ -1030,7 +1404,11 @@ function openProjectModal() {
   state.projectModalOpen = true;
   elements.projectModal.hidden = false;
   elements.newHospitalNameInput.value = "";
+  if (elements.newProjectDepartmentInput) {
+    elements.newProjectDepartmentInput.value = "";
+  }
   elements.newHospitalCityInput.value = "";
+  renderProjectModalDepartmentSuggestions();
   elements.newHospitalNameInput.focus();
 }
 
@@ -1067,12 +1445,11 @@ function buildReplyModeIntakeNote(rawReply, visitDate) {
   }
 
   const normalizedVisitDate = String(visitDate || "").trim() || state.supplement.sourceDate || "--";
-  const departmentName = String(state.supplement.sourceDepartment || "").trim() || "未填写";
+  const displayVisitDate = formatDate(normalizedVisitDate);
   const sourceText = String(state.supplement.sourceText || "").trim() || "未关联上级留言内容";
   return [
     "【留言回复纪要】",
-    `关联日期：${normalizedVisitDate}`,
-    `关联科室：${departmentName}`,
+    `关联日期：${displayVisitDate}`,
     `上级留言：${sourceText}`,
     "回复内容：",
     replyText,
@@ -1102,15 +1479,96 @@ function buildSupplementedIntakeNote(baseNote, supplementText) {
   ].join("\n\n");
 }
 
+function normalizeDepartmentInputValue(value) {
+  const normalized = String(value || "").trim();
+  return normalized === "无科室" ? "" : normalized;
+}
+
+function getCurrentDepartmentName() {
+  return normalizeDepartmentInputValue(elements.departmentInput?.value || "");
+}
+
+function clearDepartmentInput(options = {}) {
+  if (elements.departmentInput) {
+    elements.departmentInput.value = "";
+  }
+  if (elements.departmentSuggestions && options.clearSuggestions) {
+    elements.departmentSuggestions.innerHTML = "";
+  }
+  if (options.resetProjectBinding) {
+    state.intakeDepartment.projectId = "";
+  }
+}
+
+function renderDepartmentField() {
+  if (!elements.departmentInput || !elements.departmentSuggestions) {
+    return;
+  }
+
+  const selectedProject = getSelectedProject();
+  const projectId = String(selectedProject?.id || "").trim();
+  const departmentSuggestions = Array.isArray(selectedProject?.departmentSuggestions)
+    ? selectedProject.departmentSuggestions
+    : [];
+
+  elements.departmentSuggestions.innerHTML = departmentSuggestions
+    .map(
+      (departmentName) =>
+        `<option value="${escapeHtml(String(departmentName || "").trim())}">${escapeDisplayHtml(
+          String(departmentName || "").trim(),
+        )}</option>`,
+    )
+    .join("");
+
+  if (projectId !== state.intakeDepartment.projectId) {
+    elements.departmentInput.value = "";
+  }
+
+  elements.departmentInput.placeholder = "无科室";
+  elements.departmentInput.disabled = state.busy || !projectId;
+  state.intakeDepartment.projectId = projectId;
+}
+
+function getProjectModalDepartmentSuggestions() {
+  const seen = new Set();
+  const suggestions = [];
+  const projects = Array.isArray(state.bootstrap?.projects) ? state.bootstrap.projects : [];
+  for (const project of projects) {
+    const departmentSuggestions = Array.isArray(project?.departmentSuggestions) ? project.departmentSuggestions : [];
+    for (const suggestion of departmentSuggestions) {
+      const normalized = String(suggestion || "").trim();
+      const key = normalized.toLowerCase();
+      if (!normalized || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      suggestions.push(normalized);
+    }
+  }
+  return suggestions;
+}
+
+function renderProjectModalDepartmentSuggestions() {
+  if (!elements.newProjectDepartmentSuggestions) {
+    return;
+  }
+  const suggestions = getProjectModalDepartmentSuggestions();
+  elements.newProjectDepartmentSuggestions.innerHTML = suggestions
+    .map((departmentName) => `<option value="${escapeHtml(departmentName)}">${escapeDisplayHtml(departmentName)}</option>`)
+    .join("");
+}
+
 function getCurrentIntakeContext() {
   const projectId = elements.projectSelect.value;
   const visitDate = resolveVisitDate();
   const rawNote = getVisibleReplyText();
+  const departmentName = getCurrentDepartmentName();
   const baseNote = state.supplement.remarkId ? buildReplyModeIntakeNote(rawNote, visitDate) : rawNote;
   const supplementText = getSavedSupplementText();
   const note = buildSupplementedIntakeNote(baseNote, supplementText);
   return {
     projectId,
+    departmentName,
     rawNote,
     baseNote,
     supplementText,
@@ -1120,29 +1578,34 @@ function getCurrentIntakeContext() {
 }
 
 function invalidateIntakePreview(options = {}) {
-  const { preserveResult = false } = options;
-  if (!state.intakePreviewFingerprint) {
-    if (!preserveResult) {
-      state.lastResult = null;
-    }
-    return;
-  }
+  const { preserveResult = false, staleReason = "" } = options;
   state.intakePreviewFingerprint = "";
   if (!preserveResult) {
     state.lastResult = null;
+    state.intakePreviewStaleReason = "";
+  } else if (state.lastResult) {
+    state.intakePreviewStaleReason = staleReason || state.intakePreviewStaleReason || "";
+  } else {
+    state.intakePreviewStaleReason = "";
   }
   renderIntakeResult();
 }
 
 function buildIntakeReviewState(extraction = {}) {
+  const contacts = Array.isArray(extraction.contacts) ? extraction.contacts : [];
   const nextActions = Array.isArray(extraction.nextActions) ? extraction.nextActions : [];
   return {
     nextStep: {
       cancelled: false,
     },
+    contacts: contacts.map((item, index) => ({
+      itemId: String(item?.reviewContactId || `intake-contact-${index + 1}`),
+      selectedContactId: String(item?.matchedContactId || "").trim(),
+    })),
     nextActions: nextActions.map((_, index) => ({
       cancelled: false,
       itemId: `next-action-${index}`,
+      relatedContactIds: normalizeReviewIdList(nextActions[index]?.relatedContactIds),
     })),
   };
 }
@@ -1156,10 +1619,17 @@ function cloneIntakeReviewState(reviewState) {
     nextStep: {
       cancelled: Boolean(reviewState.nextStep?.cancelled),
     },
+    contacts: Array.isArray(reviewState.contacts)
+      ? reviewState.contacts.map((item, index) => ({
+          itemId: String(item?.itemId || `intake-contact-${index + 1}`),
+          selectedContactId: String(item?.selectedContactId || "").trim(),
+        }))
+      : [],
     nextActions: Array.isArray(reviewState.nextActions)
       ? reviewState.nextActions.map((item, index) => ({
           cancelled: Boolean(item?.cancelled),
           itemId: String(item?.itemId || `next-action-${index}`),
+          relatedContactIds: normalizeReviewIdList(item?.relatedContactIds),
         }))
       : [],
   };
@@ -1174,8 +1644,14 @@ function ensureIntakeReviewState(result) {
     result.reviewState = buildIntakeReviewState(result.extraction);
   }
 
+  const contacts = Array.isArray(result.extraction.contacts) ? result.extraction.contacts : [];
   const nextActions = Array.isArray(result.extraction.nextActions) ? result.extraction.nextActions : [];
-  if (!Array.isArray(result.reviewState.nextActions) || result.reviewState.nextActions.length !== nextActions.length) {
+  if (
+    !Array.isArray(result.reviewState.contacts) ||
+    result.reviewState.contacts.length !== contacts.length ||
+    !Array.isArray(result.reviewState.nextActions) ||
+    result.reviewState.nextActions.length !== nextActions.length
+  ) {
     result.reviewState = buildIntakeReviewState(result.extraction);
     return result.reviewState;
   }
@@ -1187,25 +1663,31 @@ function ensureIntakeReviewState(result) {
   result.reviewState.nextActions = result.reviewState.nextActions.map((item, index) => ({
     cancelled: Boolean(item?.cancelled),
     itemId: String(item?.itemId || `next-action-${index}`),
+    relatedContactIds: normalizeReviewIdList(item?.relatedContactIds),
+  }));
+  result.reviewState.contacts = result.reviewState.contacts.map((item, index) => ({
+    itemId: String(item?.itemId || contacts[index]?.reviewContactId || `intake-contact-${index + 1}`),
+    selectedContactId: String(item?.selectedContactId || "").trim(),
   }));
 
   return result.reviewState;
 }
 
-function renderIntakeReviewItem({ label, title, meta, cancelled, section, itemId }) {
+function renderIntakeReviewItem({ label, title, meta, cancelled, section, itemId, extraContent = "" }) {
   return `
     <li class="result-review-item ${cancelled ? "is-cancelled" : ""}" data-intake-review-section="${section}" data-intake-review-id="${itemId}">
       <div class="result-review-item-main">
         <div class="result-review-item-head">
-          <span class="result-review-item-label">${escapeHtml(label)}</span>
+          <span class="result-review-item-label">${escapeDisplayHtml(label)}</span>
           <span class="result-review-item-status ${cancelled ? "is-cancelled" : ""}">${cancelled ? "已取消" : "待确认"}</span>
         </div>
-        <strong>${escapeHtml(title || "未填写")}</strong>
-        ${meta ? `<p class="result-review-item-meta">${escapeHtml(meta)}</p>` : ""}
+        <strong>${escapeDisplayHtml(title || "未填写")}</strong>
+        ${meta ? `<p class="result-review-item-meta">${escapeDisplayHtml(meta)}</p>` : ""}
       </div>
       <button class="chip result-review-toggle" type="button" data-intake-action="toggle-review-item" data-intake-review-section="${section}" data-intake-review-id="${itemId}">
         ${cancelled ? "恢复" : "取消"}
       </button>
+      ${extraContent ? `<div class="result-review-extra">${extraContent}</div>` : ""}
     </li>
   `;
 }
@@ -1243,9 +1725,22 @@ function buildReviewedIntakeSnapshot() {
 
   return {
     extraction: {
-      department: state.lastResult.extraction.department,
       contacts: Array.isArray(state.lastResult.extraction.contacts)
-        ? state.lastResult.extraction.contacts.map((item) => ({ ...item }))
+        ? state.lastResult.extraction.contacts.map((item, index) => {
+            const reviewContact = Array.isArray(reviewState.contacts) ? reviewState.contacts[index] : null;
+            const selectedContactId = String(reviewContact?.selectedContactId || "").trim();
+            return {
+              ...item,
+              reviewContactId: String(item?.reviewContactId || reviewContact?.itemId || `intake-contact-${index + 1}`),
+              matchedContactId: selectedContactId,
+              resolutionStatus:
+                selectedContactId
+                  ? "matched"
+                  : String(item?.resolutionStatus || "new") === "conflict"
+                    ? "conflict"
+                    : "new",
+            };
+          })
         : [],
       feedbackSummary: state.lastResult.extraction.feedbackSummary,
       blockers: state.lastResult.extraction.blockers,
@@ -1253,7 +1748,10 @@ function buildReviewedIntakeSnapshot() {
       issues: Array.isArray(state.lastResult.extraction.issues) ? [...state.lastResult.extraction.issues] : [],
       nextStep: state.lastResult.extraction.nextStep,
       nextActions: Array.isArray(state.lastResult.extraction.nextActions)
-        ? state.lastResult.extraction.nextActions.map((item) => ({ ...item }))
+        ? state.lastResult.extraction.nextActions.map((item, index) => ({
+            ...item,
+            relatedContactIds: normalizeReviewIdList(reviewState.nextActions?.[index]?.relatedContactIds),
+          }))
         : [],
       stageAfterUpdate: state.lastResult.extraction.stageAfterUpdate,
       managerAttentionNeeded: Boolean(state.lastResult.extraction.managerAttentionNeeded),
@@ -1262,13 +1760,221 @@ function buildReviewedIntakeSnapshot() {
   };
 }
 
+function normalizeReviewIdList(values) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => {
+      if (!item || seen.has(item)) {
+        return false;
+      }
+      seen.add(item);
+      return true;
+    });
+}
+
+function updateIntakeContactSelection(reviewContactId, selectedContactId) {
+  const reviewState = ensureIntakeReviewState(state.lastResult);
+  if (!reviewState) {
+    return;
+  }
+  const contactItem = reviewState.contacts.find((item) => item.itemId === reviewContactId);
+  if (!contactItem) {
+    return;
+  }
+  contactItem.selectedContactId = selectedContactId;
+  renderIntakeResult();
+}
+
+function toggleIntakeActionRelatedContact(reviewItemId, contactId) {
+  const reviewState = ensureIntakeReviewState(state.lastResult);
+  if (!reviewState || !contactId) {
+    return;
+  }
+  const nextAction = reviewState.nextActions.find((item) => item.itemId === reviewItemId);
+  if (!nextAction) {
+    return;
+  }
+  const currentIds = normalizeReviewIdList(nextAction.relatedContactIds);
+  if (currentIds.includes(contactId)) {
+    nextAction.relatedContactIds = currentIds.filter((item) => item !== contactId);
+  } else {
+    nextAction.relatedContactIds = [...currentIds, contactId];
+  }
+  renderIntakeResult();
+}
+
+function getIntakeReviewBlockingMessage(result = state.lastResult) {
+  const reviewState = ensureIntakeReviewState(result);
+  if (!result?.extraction || !reviewState) {
+    return "请先生成纪要，再提交。";
+  }
+
+  const contacts = Array.isArray(result.extraction.contacts) ? result.extraction.contacts : [];
+  for (let index = 0; index < contacts.length; index += 1) {
+    const item = contacts[index];
+    const reviewContact = reviewState.contacts?.[index];
+    const selectedContactId = String(reviewContact?.selectedContactId || "").trim();
+    if (String(item?.resolutionStatus || "") === "conflict" && !selectedContactId) {
+      return `联系人“${item.name || "未命名联系人"}”存在同名冲突，请先手动确认。`;
+    }
+  }
+  return "";
+}
+
+function getSelectedProjectContacts() {
+  return Array.isArray(getSelectedProject()?.contacts) ? getSelectedProject().contacts : [];
+}
+
+function formatProjectContactOptionLabel(contact) {
+  const name = String(contact?.name || "").trim() || "未命名联系人";
+  const role = String(contact?.roleTitle || "").trim() || "角色未填";
+  return `${name} / ${role}`;
+}
+
+function buildIntakeContactStatusText(contact, selectedContactId) {
+  const initialStatus = String(contact?.resolutionStatus || "").trim();
+  const autoMatchedId = String(contact?.matchedContactId || "").trim();
+  if (selectedContactId) {
+    return autoMatchedId && selectedContactId === autoMatchedId ? "已自动关联现有联系人" : "已手动关联现有联系人";
+  }
+  if (initialStatus === "conflict") {
+    return "命中多个同名联系人，提交前必须选择已有联系人";
+  }
+  return "将新建联系人，可按需改为关联现有联系人";
+}
+
+function renderIntakeContactResolutionCards(contacts, reviewState) {
+  const projectContacts = getSelectedProjectContacts();
+  if (!contacts.length) {
+    return '<p class="result-review-empty">未提取到联系人。</p>';
+  }
+
+  return contacts
+    .map((contact, index) => {
+      const reviewContact = reviewState.contacts?.[index];
+      const selectedContactId = String(reviewContact?.selectedContactId || "").trim();
+      const initialStatus = String(contact?.resolutionStatus || "").trim();
+      const safeStatusClass = initialStatus ? ` is-${initialStatus.replace(/[^a-z-]/gi, "").toLowerCase()}` : "";
+      const statusText = buildIntakeContactStatusText(contact, selectedContactId);
+      const options = [];
+      if (initialStatus === "conflict") {
+        options.push('<option value="">请选择已有联系人</option>');
+      } else {
+        options.push(`<option value="">${selectedContactId ? "改为新建联系人" : "新建联系人"}</option>`);
+      }
+      options.push(
+        ...projectContacts.map((item) => {
+          const optionValue = String(item?.id || "").trim();
+          if (!optionValue) {
+            return "";
+          }
+          const selected = optionValue === selectedContactId ? " selected" : "";
+          return `<option value="${escapeHtml(optionValue)}"${selected}>${escapeDisplayHtml(formatProjectContactOptionLabel(item))}</option>`;
+        }),
+      );
+      return `
+        <article class="result-contact-review-card${safeStatusClass}">
+          <div class="result-contact-review-main">
+            <div class="result-contact-review-head">
+              <strong>${escapeDisplayHtml(contact.name || "未命名联系人")}</strong>
+              <span>${escapeDisplayHtml(statusText)}</span>
+            </div>
+            <p>${escapeDisplayHtml(contact.role || "角色未填写")}</p>
+          </div>
+          <label class="result-contact-review-field">
+            <span>关联方式</span>
+            <select data-intake-contact-select="true" data-intake-contact-id="${escapeHtml(contact.reviewContactId || reviewContact?.itemId || "")}">
+              ${options.join("")}
+            </select>
+          </label>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function buildIntakeActionRelatedChoices(extractionContacts, reviewState) {
+  const projectContacts = getSelectedProjectContacts();
+  const projectContactById = new Map(projectContacts.map((contact) => [String(contact.id || "").trim(), contact]));
+  const choices = [];
+  const seen = new Set();
+  const selectedProjectContactIds = new Set(
+    Array.isArray(reviewState?.contacts)
+      ? reviewState.contacts.map((item) => String(item?.selectedContactId || "").trim()).filter(Boolean)
+      : [],
+  );
+
+  extractionContacts.forEach((contact, index) => {
+    const reviewContactId = String(contact?.reviewContactId || reviewState?.contacts?.[index]?.itemId || "").trim();
+    if (!reviewContactId || seen.has(reviewContactId)) {
+      return;
+    }
+    seen.add(reviewContactId);
+    const selectedContactId = String(reviewState?.contacts?.[index]?.selectedContactId || "").trim();
+    const selectedProjectContact = projectContactById.get(selectedContactId);
+    const selectedName = String(selectedProjectContact?.name || "").trim();
+    const extractedName = String(contact?.name || "").trim();
+    const label =
+      selectedName && selectedName !== extractedName
+        ? `${selectedName}（纪要提及：${extractedName || "未命名联系人"}）`
+        : extractedName || selectedName || "未命名联系人";
+    choices.push({
+      id: reviewContactId,
+      label,
+    });
+  });
+
+  projectContacts.forEach((contact) => {
+    const contactId = String(contact?.id || "").trim();
+    if (!contactId || seen.has(contactId) || selectedProjectContactIds.has(contactId)) {
+      return;
+    }
+    seen.add(contactId);
+    choices.push({
+      id: contactId,
+      label: formatProjectContactOptionLabel(contact),
+    });
+  });
+
+  return choices;
+}
+
+function renderIntakeActionRelatedContacts(actionIndex, reviewItemId, extractionContacts, reviewState) {
+  const relatedChoices = buildIntakeActionRelatedChoices(extractionContacts, reviewState);
+  if (!relatedChoices.length) {
+    return '<p class="result-related-contact-empty">暂无可关联联系人。</p>';
+  }
+  const selectedIds = normalizeReviewIdList(reviewState?.nextActions?.[actionIndex]?.relatedContactIds);
+  return `
+    <div class="result-related-contact-row">
+      ${relatedChoices
+        .map(
+          (choice) => `
+            <button
+              class="chip result-related-contact${selectedIds.includes(choice.id) ? " is-active" : ""}"
+              type="button"
+              data-intake-action="toggle-action-contact"
+              data-intake-review-id="${escapeHtml(reviewItemId)}"
+              data-contact-id="${escapeHtml(choice.id)}"
+            >
+              ${escapeDisplayHtml(choice.label)}
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderIntakeSubmitButton() {
   if (!elements.submitButton) {
     return;
   }
 
-  const { projectId, rawNote, note, visitDate } = getCurrentIntakeContext();
+  const { projectId, rawNote, note, visitDate, departmentName } = getCurrentIntakeContext();
   const previewReady = isPreviewReadyForCurrentInput({ projectId, note, visitDate });
+  const reviewBlockingMessage = getIntakeReviewBlockingMessage();
   const isSupplementMode = Boolean(state.supplement.remarkId);
   const hasGeneratedOnce = Boolean(state.lastResult);
   const hasInput = Boolean(projectId && rawNote);
@@ -1303,7 +2009,12 @@ function renderIntakeSubmitButton() {
 
   const resultSubmitButton = elements.intakeResult?.querySelector("[data-intake-action='submit']");
   if (resultSubmitButton) {
-    resultSubmitButton.disabled = !(previewReady && !state.busy && !state.followup.busy);
+    resultSubmitButton.disabled = !(
+      previewReady &&
+      !reviewBlockingMessage &&
+      !state.busy &&
+      !state.followup.busy
+    );
   }
   if (elements.supplementButton) {
     elements.supplementButton.disabled = state.busy || state.followup.busy;
@@ -1319,7 +2030,7 @@ function isPreviewReadyForCurrentInput({ projectId, note, visitDate } = getCurre
   );
 }
 
-async function generateIntakePreview({ projectId, note, visitDate, fingerprint }) {
+async function generateIntakePreview({ projectId, note, visitDate, departmentName, fingerprint }) {
   setBusy(true);
   showToast("正在生成纪要", "busy");
   try {
@@ -1330,6 +2041,7 @@ async function generateIntakePreview({ projectId, note, visitDate, fingerprint }
         projectId,
         note,
         visitDate,
+        departmentName: departmentName || undefined,
         followupSessionId: state.followup.sessionId || undefined,
       }),
     });
@@ -1340,6 +2052,7 @@ async function generateIntakePreview({ projectId, note, visitDate, fingerprint }
 
     state.lastResult = { ...payload, reviewState: buildIntakeReviewState(payload.extraction) };
     state.intakePreviewFingerprint = fingerprint;
+    state.intakePreviewStaleReason = "";
     renderIntakeResult();
     renderIntakeSubmitButton();
     showToast("纪要已生成，请确认后提交", "ready");
@@ -1351,7 +2064,7 @@ async function generateIntakePreview({ projectId, note, visitDate, fingerprint }
 }
 
 async function generateIntakePreviewFromForm() {
-  const { projectId, rawNote, note, visitDate } = getCurrentIntakeContext();
+  const { projectId, rawNote, note, visitDate, departmentName } = getCurrentIntakeContext();
 
   if (!projectId || !rawNote || state.busy || state.followup.busy) {
     return;
@@ -1360,15 +2073,15 @@ async function generateIntakePreviewFromForm() {
   const fingerprint = buildIntakeFingerprint({ projectId, note, visitDate });
   const previewReady = isPreviewReadyForCurrentInput({ projectId, note, visitDate });
   if (!previewReady) {
-    await generateIntakePreview({ projectId, note, visitDate, fingerprint });
+    await generateIntakePreview({ projectId, note, visitDate, departmentName, fingerprint });
     return;
   }
 
-  await generateIntakePreview({ projectId, note, visitDate, fingerprint });
+  await generateIntakePreview({ projectId, note, visitDate, departmentName, fingerprint });
 }
 
 async function commitIntake() {
-  const { projectId, rawNote, note, visitDate } = getCurrentIntakeContext();
+  const { projectId, rawNote, note, visitDate, departmentName } = getCurrentIntakeContext();
 
   if (!projectId || !rawNote || state.busy || state.followup.busy) {
     return;
@@ -1377,6 +2090,11 @@ async function commitIntake() {
   const previewReady = isPreviewReadyForCurrentInput({ projectId, note, visitDate });
   if (!previewReady) {
     showToast("请先生成纪要，再提交", "warn");
+    return;
+  }
+  const reviewBlockingMessage = getIntakeReviewBlockingMessage();
+  if (reviewBlockingMessage) {
+    showToast(reviewBlockingMessage, "warn");
     return;
   }
 
@@ -1395,6 +2113,7 @@ async function commitIntake() {
       projectId,
       note,
       visitDate,
+      departmentName: departmentName || undefined,
       followupSessionId: state.followup.sessionId || undefined,
       reviewedSnapshot,
       submitScenario: buildFollowupScenario("submit"),
@@ -1409,12 +2128,13 @@ async function commitIntake() {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
 
-    state.bootstrap = payload.bootstrap;
+    applyBootstrapPayload(payload.bootstrap);
     state.intakePreviewFingerprint = "";
     state.selectedProjectId = payload.project.id;
     clearSupplementContext();
     persistSelection();
     elements.noteInput.value = "";
+    clearDepartmentInput();
     resetContactEditorState({ silent: true });
     resetFollowupState();
     resetHistoryInfoState();
@@ -1464,7 +2184,7 @@ async function openFollowupDialogByGeneratingQuestions(options = {}) {
     state.followup.sessionId = payload.sessionId;
     state.followup.history = normalizeFollowupHistory(payload.history);
     const pendingFromPayload = payload.question ? normalizeFollowupQuestions([payload.question]) : [];
-    const pendingFromHistory = getPendingFollowupQuestionsFromHistory();
+    const pendingFromHistory = getPendingFollowupQuestions(state.followup.history);
     state.followup.pendingQuestions = pendingFromPayload.length
       ? pendingFromPayload
       : pendingFromHistory.length
@@ -1500,50 +2220,6 @@ function closeFollowupDialog(options = {}) {
   renderIntakeSubmitButton();
 }
 
-function normalizeHistoryInfoSessions(sessions) {
-  if (!Array.isArray(sessions)) {
-    return [];
-  }
-  return sessions
-    .map((session) => ({
-      sessionId: String(session?.sessionId || ""),
-      projectId: String(session?.projectId || ""),
-      createdAt: String(session?.createdAt || ""),
-      closedAt: String(session?.closedAt || ""),
-      closedReason: String(session?.closedReason || ""),
-      source: String(session?.source || ""),
-      userId: String(session?.userId || ""),
-      userName: String(session?.userName || ""),
-      seedNote: String(session?.seedNote || ""),
-      scenario: session?.scenario && typeof session.scenario === "object" ? session.scenario : null,
-      history: Array.isArray(session?.history)
-        ? session.history.map((item) => ({
-            id: String(item?.id || ""),
-            round: Number(item?.round) || 0,
-            question: String(item?.question || ""),
-            status: String(item?.status || ""),
-            createdAt: String(item?.createdAt || ""),
-            scenarioSnapshot:
-              item?.scenarioSnapshot && typeof item.scenarioSnapshot === "object" ? item.scenarioSnapshot : null,
-            answer: item?.answer
-              ? {
-                  id: String(item.answer.id || ""),
-                  content: String(item.answer.content || ""),
-                  createdAt: String(item.answer.createdAt || ""),
-                  submittedByUserId: String(item.answer.submittedByUserId || ""),
-                  submittedByUserName: String(item.answer.submittedByUserName || ""),
-                  submitScenario:
-                    item.answer.submitScenario && typeof item.answer.submitScenario === "object"
-                      ? item.answer.submitScenario
-                      : null,
-                }
-              : null,
-          }))
-        : [],
-    }))
-    .filter((item) => item.sessionId);
-}
-
 function closeHistoryInfoDialog() {
   state.historyInfo.dialogOpen = false;
   renderHistoryInfoDialog();
@@ -1556,17 +2232,6 @@ function resetHistoryInfoState() {
   state.historyInfo.projectId = "";
   state.historyInfo.sessions = [];
   renderHistoryInfoDialog();
-}
-
-function formatScenarioSnapshot(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return "--";
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return "--";
-  }
 }
 
 function renderHistoryInfoDialog() {
@@ -1585,12 +2250,13 @@ function renderHistoryInfoDialog() {
   }
 
   const sessions = Array.isArray(state.historyInfo.sessions) ? state.historyInfo.sessions : [];
+  const canLeaveProjectRemarks = canCurrentUserLeaveProjectRemarks();
   if (state.historyInfo.busy && !sessions.length) {
     elements.historyInfoDialogList.innerHTML = '<p class="empty-copy">历史信息加载中...</p>';
     return;
   }
   if (state.historyInfo.error && !sessions.length) {
-    elements.historyInfoDialogList.innerHTML = `<p class="backup-error">${escapeHtml(state.historyInfo.error)}</p>`;
+    elements.historyInfoDialogList.innerHTML = `<p class="backup-error">${escapeDisplayHtml(state.historyInfo.error)}</p>`;
     return;
   }
   if (!sessions.length) {
@@ -1612,13 +2278,31 @@ function renderHistoryInfoDialog() {
               const submitScenario = formatScenarioSnapshot(answer?.submitScenario || item.scenarioSnapshot);
               return `
                 <article class="history-qa-item">
-                  <p class="history-question"><strong>问题 ${item.round || "--"}：</strong>${escapeHtml(item.question || "--")}</p>
-                  <p class="history-answer"><strong>回答：</strong>${escapeHtml(answer?.content || "（未回答）")}</p>
-                  <p class="history-meta-line">提交人：${escapeHtml(submitter)} · 提交时间：${escapeHtml(submitAt)}</p>
+                  <p class="history-question"><strong>问题 ${item.round || "--"}：</strong>${escapeDisplayHtml(item.question || "--")}</p>
+                  <p class="history-answer"><strong>回答：</strong>${escapeDisplayHtml(answer?.content || "（未回答）")}</p>
+                  <p class="history-meta-line">提交人：${escapeDisplayHtml(submitter)} · 提交时间：${escapeDisplayHtml(submitAt)}</p>
                   <details class="history-params">
                     <summary>提交参数</summary>
                     <pre>${escapeHtml(submitScenario)}</pre>
                   </details>
+                  ${
+                    canLeaveProjectRemarks
+                      ? `
+                        <div class="history-qa-actions">
+                          <button
+                            class="chip history-qa-action"
+                            type="button"
+                            data-history-action="remark"
+                            data-history-session-id="${escapeHtml(session.sessionId)}"
+                            data-history-question-id="${escapeHtml(item.id)}"
+                            ${state.historyInfo.busy || state.followup.busy || state.busy ? "disabled" : ""}
+                          >
+                            给专员留言
+                          </button>
+                        </div>
+                      `
+                      : ""
+                  }
                 </article>
               `;
             })
@@ -1628,14 +2312,14 @@ function renderHistoryInfoDialog() {
         <article class="history-session-card">
           <div class="history-session-head">
             <div>
-              <strong>历史信息会话 ${escapeHtml(session.sessionId)}</strong>
+              <strong>历史信息会话 ${escapeDisplayHtml(session.sessionId)}</strong>
               <p class="history-meta-line">
-                创建人：${escapeHtml(session.userName || "--")} · 创建时间：${escapeHtml(
+                创建人：${escapeDisplayHtml(session.userName || "--")} · 创建时间：${escapeDisplayHtml(
                   session.createdAt ? formatDateTime(session.createdAt) : "--",
                 )} · 回答进度：${answerCount}/${totalCount}
               </p>
               <p class="history-meta-line">
-                状态：${session.closedAt ? `已关闭（${escapeHtml(formatDateTime(session.closedAt))}）` : "进行中"}
+                状态：${session.closedAt ? `已关闭（${escapeDisplayHtml(formatDateTime(session.closedAt))}）` : "进行中"}
               </p>
             </div>
             <button
@@ -1646,6 +2330,7 @@ function renderHistoryInfoDialog() {
               ${state.historyInfo.busy || state.followup.busy || state.busy ? "disabled" : ""}
             >
               基于此继续追问
+            </button>
           </div>
           <details class="history-params">
             <summary>会话参数</summary>
@@ -1656,6 +2341,169 @@ function renderHistoryInfoDialog() {
       `;
     })
     .join("");
+}
+
+function getTaskById(taskId) {
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!normalizedTaskId) {
+    return null;
+  }
+  return (Array.isArray(state.bootstrap?.tasks) ? state.bootstrap.tasks : []).find(
+    (task) => String(task?.id || "").trim() === normalizedTaskId,
+  ) || null;
+}
+
+function resolveTaskDialogDefaultDate(task) {
+  if (task?.dueAt) {
+    return formatDateInput(new Date(task.dueAt));
+  }
+  if (task?.initialDueAt) {
+    return formatDateInput(new Date(task.initialDueAt));
+  }
+  const businessDate = String(state.bootstrap?.health?.simulation?.currentDate || "").trim();
+  if (businessDate) {
+    return businessDate;
+  }
+  return formatDateInput(new Date());
+}
+
+function renderTaskDueDialog() {
+  if (!elements.taskDueDialog || !elements.taskDueDialogMeta || !elements.taskDueDialogDateInput) {
+    return;
+  }
+  const task = getTaskById(state.taskDueDialog.taskId);
+  const open = Boolean(state.taskDueDialog.dialogOpen && task);
+  elements.taskDueDialog.hidden = !open;
+  if (!open) {
+    return;
+  }
+
+  const historyCount = Array.isArray(task?.dueDateHistory) ? task.dueDateHistory.length : 0;
+  elements.taskDueDialogTitle.textContent = "截止日";
+  elements.taskDueDialogCopy.textContent = task?.dueAt ? "可调整截止日，系统会保留变更记录。" : "先设置截止日，系统会记为初始截止日。";
+  elements.taskDueDialogMeta.innerHTML = `
+    <div class="task-dialog-meta-card">
+      <span>开始时间</span>
+      <strong>${escapeDisplayHtml(formatDate(task?.startAt || task?.createdAt))}</strong>
+    </div>
+    <div class="task-dialog-meta-card">
+      <span>初始截止日</span>
+      <strong>${escapeDisplayHtml(task?.initialDueAt ? formatDate(task.initialDueAt) : "未设置")}</strong>
+    </div>
+    <div class="task-dialog-meta-card">
+      <span>当前截止日</span>
+      <strong>${escapeDisplayHtml(task?.dueAt ? formatDate(task.dueAt) : "未设置")}</strong>
+    </div>
+    <div class="task-dialog-meta-card">
+      <span>历史变更</span>
+      <strong>${historyCount} 次</strong>
+    </div>
+  `;
+  elements.taskDueDialogDateInput.value = state.taskDueDialog.draftDate || resolveTaskDialogDefaultDate(task);
+  elements.taskDueDialogDateInput.disabled = state.busy;
+  elements.taskDueDialogCloseButton.disabled = state.busy;
+  elements.taskDueDialogCancelButton.disabled = state.busy;
+  elements.taskDueDialogSubmitButton.disabled = state.busy;
+}
+
+function renderTaskRecordGroups(records) {
+  const safeRecords = Array.isArray(records) ? records : [];
+  if (!safeRecords.length) {
+    return '<p class="empty-copy">当前任务还没有记录。</p>';
+  }
+
+  const groups = new Map();
+  for (const record of safeRecords) {
+    const dayLabel = formatDate(record?.createdAt);
+    if (!groups.has(dayLabel)) {
+      groups.set(dayLabel, []);
+    }
+    groups.get(dayLabel).push(record);
+  }
+
+  return [...groups.entries()]
+    .map(
+      ([dayLabel, items]) => `
+        <section class="task-record-group">
+          <h4>${escapeDisplayHtml(dayLabel)}</h4>
+          ${items
+            .map(
+              (item) => `
+                <article class="task-record-item">
+                  <div class="task-record-item-head">
+                    <strong>${escapeDisplayHtml(item?.createdByName || "未知用户")}</strong>
+                    <span>${escapeDisplayHtml(formatDateTime(item?.createdAt))}</span>
+                  </div>
+                  <p>${escapeDisplayHtml(item?.content || "")}</p>
+                </article>
+              `,
+            )
+            .join("")}
+        </section>
+      `,
+    )
+    .join("");
+}
+
+function renderTaskRecordDialog() {
+  if (!elements.taskRecordDialog || !elements.taskRecordDialogList || !elements.taskRecordDialogTextarea) {
+    return;
+  }
+  const task = getTaskById(state.taskRecordDialog.taskId);
+  const open = Boolean(state.taskRecordDialog.dialogOpen && task);
+  elements.taskRecordDialog.hidden = !open;
+  if (!open) {
+    return;
+  }
+
+  elements.taskRecordDialogTitle.textContent = "处理记录";
+  elements.taskRecordDialogCopy.textContent = task?.recordCount
+    ? `已记录 ${task.recordCount} 条，可继续补充。`
+    : "还没有记录，可先补一条。";
+  elements.taskRecordDialogList.innerHTML = renderTaskRecordGroups(task?.records);
+  elements.taskRecordDialogTextarea.value = state.taskRecordDialog.draftContent;
+  elements.taskRecordDialogTextarea.disabled = state.busy;
+  elements.taskRecordDialogCloseButton.disabled = state.busy;
+  elements.taskRecordDialogCancelButton.disabled = state.busy;
+  elements.taskRecordDialogSubmitButton.disabled = state.busy;
+}
+
+function openTaskDueDialog(taskId) {
+  const task = getTaskById(taskId);
+  if (!task) {
+    showToast("未找到对应任务", "error");
+    return;
+  }
+  state.taskDueDialog.taskId = task.id;
+  state.taskDueDialog.draftDate = resolveTaskDialogDefaultDate(task);
+  state.taskDueDialog.dialogOpen = true;
+  renderTaskDueDialog();
+}
+
+function closeTaskDueDialog() {
+  state.taskDueDialog.dialogOpen = false;
+  state.taskDueDialog.taskId = "";
+  state.taskDueDialog.draftDate = "";
+  renderTaskDueDialog();
+}
+
+function openTaskRecordDialog(taskId) {
+  const task = getTaskById(taskId);
+  if (!task) {
+    showToast("未找到对应任务", "error");
+    return;
+  }
+  state.taskRecordDialog.taskId = task.id;
+  state.taskRecordDialog.draftContent = "";
+  state.taskRecordDialog.dialogOpen = true;
+  renderTaskRecordDialog();
+}
+
+function closeTaskRecordDialog() {
+  state.taskRecordDialog.dialogOpen = false;
+  state.taskRecordDialog.taskId = "";
+  state.taskRecordDialog.draftContent = "";
+  renderTaskRecordDialog();
 }
 
 async function loadHistoryInfo(forceRefresh = false) {
@@ -1706,7 +2554,7 @@ async function submitFollowupAnswers() {
   const sessionId = state.followup.sessionId;
   const pendingQuestions = state.followup.pendingQuestions.length
     ? [...state.followup.pendingQuestions]
-    : getPendingFollowupQuestionsFromHistory();
+    : getPendingFollowupQuestions(state.followup.history);
   if (!sessionId || !pendingQuestions.length) {
     return;
   }
@@ -1744,9 +2592,9 @@ async function submitFollowupAnswers() {
     state.followup.pendingQuestions = [];
     state.followup.draftAnswers = {};
     closeFollowupDialog({ force: true });
-    invalidateIntakePreview();
+    invalidateIntakePreview({ preserveResult: true, staleReason: "followup-answer" });
     renderIntakeSubmitButton();
-    showToast("追问回答已保存，请再次生成纪要", "ready");
+    showToast("追问回答已保存，当前结果待重新生成", "ready");
   } catch (error) {
     showToast(error instanceof Error ? error.message : "追问回答提交失败", "error");
   } finally {
@@ -1766,54 +2614,6 @@ function buildFollowupScenario(operation) {
     templateId: state.followup.lastTemplateId || "",
     recordedAt: new Date().toISOString(),
   };
-}
-
-function normalizeFollowupHistory(history) {
-  if (!Array.isArray(history)) {
-    return [];
-  }
-  return history
-    .map((item) => ({
-      id: item?.id || "",
-      round: Number(item?.round) || 0,
-      question: item?.question || "",
-      status: item?.status || "pending_answer",
-      createdAt: item?.createdAt || "",
-      answer: item?.answer
-        ? {
-            id: item.answer.id || "",
-            content: item.answer.content || "",
-            createdAt: item.answer.createdAt || "",
-          }
-        : null,
-    }))
-    .filter((item) => item.id && item.question);
-}
-
-function normalizeFollowupQuestions(questions) {
-  if (!Array.isArray(questions)) {
-    return [];
-  }
-  return questions
-    .map((item) => ({
-      id: item?.id || "",
-      round: Number(item?.round) || 0,
-      question: item?.question || "",
-      status: item?.status || "pending_answer",
-      createdAt: item?.createdAt || "",
-    }))
-    .filter((item) => item.status === "pending_answer")
-    .filter((item) => item.id && item.question);
-}
-
-function getPendingFollowupQuestionsFromHistory() {
-  return [...state.followup.history]
-    .filter((item) => item.status === "pending_answer")
-    .sort(
-      (left, right) =>
-        (Number(left.round) || 0) - (Number(right.round) || 0) ||
-        new Date(left.createdAt || 0).getTime() - new Date(right.createdAt || 0).getTime(),
-    );
 }
 
 function resetFollowupState() {
@@ -1862,7 +2662,9 @@ function setFollowupBusy(isBusy) {
 }
 
 function getFollowupPendingQuestions() {
-  return state.followup.pendingQuestions.length ? [...state.followup.pendingQuestions] : getPendingFollowupQuestionsFromHistory();
+  return state.followup.pendingQuestions.length
+    ? [...state.followup.pendingQuestions]
+    : getPendingFollowupQuestions(state.followup.history);
 }
 
 function syncFollowupDialogControls(pendingQuestions = getFollowupPendingQuestions()) {
@@ -1905,7 +2707,7 @@ function renderFollowupDialog() {
             <div class="followup-dialog-head">
               <strong>问题 ${item.round || "--"}</strong>
             </div>
-            <p class="followup-dialog-question">${escapeHtml(item.question)}</p>
+            <p class="followup-dialog-question">${escapeDisplayHtml(item.question)}</p>
             <textarea
               data-question-id="${escapeHtml(item.id)}"
               rows="3"
@@ -1922,52 +2724,106 @@ function renderFollowupDialog() {
 }
 
 async function updateTaskStatus(taskId, taskStatus) {
+  await updateTask(taskId, {
+    body: { taskStatus },
+    method: "PATCH",
+    busyMessage: "正在更新任务状态",
+    successMessage: "任务状态已更新",
+    errorMessage: "任务状态更新失败",
+  });
+}
+
+async function submitTaskDueDate() {
+  const taskId = String(state.taskDueDialog.taskId || "").trim();
+  const dueDate = String(state.taskDueDialog.draftDate || "").trim();
+  if (!taskId || !dueDate) {
+    showToast("请选择截止日期", "warn");
+    return;
+  }
+  await updateTask(taskId, {
+    body: { dueDate },
+    method: "PATCH",
+    busyMessage: "正在保存截止日",
+    successMessage: "截止日已更新",
+    errorMessage: "截止日更新失败",
+    onSuccess: () => closeTaskDueDialog(),
+  });
+}
+
+async function submitTaskRecord() {
+  const taskId = String(state.taskRecordDialog.taskId || "").trim();
+  const content = String(state.taskRecordDialog.draftContent || "").trim();
+  if (!taskId || !content) {
+    showToast("请输入记录内容", "warn");
+    return;
+  }
+  await updateTask(taskId, {
+    body: { content },
+    method: "POST",
+    pathSuffix: "/records",
+    busyMessage: "正在保存记录",
+    successMessage: "记录已保存",
+    errorMessage: "记录保存失败",
+    onSuccess: () => {
+      state.taskRecordDialog.draftContent = "";
+      renderTaskRecordDialog();
+    },
+  });
+}
+
+async function updateTask(taskId, options = {}) {
   setBusy(true);
-  showToast("正在更新任务状态", "busy");
+  showToast(options.busyMessage || "正在更新任务", "busy");
+  const method = String(options.method || "PATCH").trim().toUpperCase();
+  const pathSuffix = String(options.pathSuffix || "");
+  const body = options.body || {};
 
   try {
-    const response = await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
+    const response = await fetch(`/api/tasks/${taskId}${pathSuffix}`, {
+      method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskStatus }),
+      body: JSON.stringify(body),
     });
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
 
-    state.bootstrap = payload.bootstrap;
+    applyBootstrapPayload(payload.bootstrap);
     ensureSelection();
     renderAll();
     applyHealthState(payload.bootstrap.health);
-    showToast("浠诲姟鐘舵€佸凡鏇存柊", "ready");
+    if (typeof options.onSuccess === "function") {
+      options.onSuccess(payload);
+    }
+    showToast(options.successMessage || "任务已更新", "ready");
   } catch (error) {
-    showToast(error instanceof Error ? error.message : "任务状态更新失败", "error");
+    showToast(error instanceof Error ? error.message : options.errorMessage || "任务更新失败", "error");
   } finally {
     setBusy(false);
   }
 }
 
-async function updateUserRegion(userId, regionId) {
+async function updateManagedUser(userId, { regionId, supervisorUserId = "" }) {
   setBusy(true);
-  showToast("正在更新成员区域", "busy");
+  showToast("正在更新成员配置", "busy");
   try {
     const response = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ regionId }),
+      body: JSON.stringify({ regionId, supervisorUserId }),
     });
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
-    state.bootstrap = payload.bootstrap;
+    applyBootstrapPayload(payload.bootstrap);
     ensureSelection();
     renderAll();
     applyHealthState(payload.bootstrap.health);
-    showToast("成员区域已更新", "ready");
+    showToast("成员配置已更新", "ready");
   } catch (error) {
-    showToast(error instanceof Error ? error.message : "成员区域更新失败", "error");
+    showToast(error instanceof Error ? error.message : "成员配置更新失败", "error");
   } finally {
     setBusy(false);
   }
@@ -2157,8 +3013,7 @@ function ensureSelection() {
     return;
   }
 
-  const matched = projects.find((project) => project.id === state.selectedProjectId);
-  state.selectedProjectId = matched ? matched.id : projects[0].id;
+  state.selectedProjectId = resolveSelectedProjectId(projects, state.selectedProjectId);
   if (previousProjectId !== state.selectedProjectId) {
     resetContactEditorState({ silent: true });
   }
@@ -2169,6 +3024,8 @@ function renderAll() {
   if (!state.bootstrap) {
     renderAuthState();
     renderHistoryInfoDialog();
+    renderTaskDueDialog();
+    renderTaskRecordDialog();
     return;
   }
 
@@ -2177,12 +3034,15 @@ function renderAll() {
   renderTabs();
   renderProjectSearchState();
   renderProjectSelect();
+  renderDepartmentField();
   renderEntryMode();
   renderIntakeSubmitButton();
   renderIntakeResult();
   renderSupplementDialog();
   renderFollowupDialog();
   renderHistoryInfoDialog();
+  renderTaskDueDialog();
+  renderTaskRecordDialog();
   renderSignals();
   renderProjectList();
   renderProjectDetail();
@@ -2234,47 +3094,33 @@ function renderEntryMode() {
 
   const metaTokens = [
     selectedProject?.hospital?.name ? `医院 · ${selectedProject.hospital.name}` : "",
-    state.supplement.sourceDepartment ? `科室 · ${state.supplement.sourceDepartment}` : "",
-    state.supplement.sourceDate ? `留言日期 · ${state.supplement.sourceDate}` : "",
+    state.supplement.sourceDate ? `留言日期 · ${formatDate(state.supplement.sourceDate)}` : "",
   ]
     .filter(Boolean)
-    .map((item) => `<span>${escapeHtml(item)}</span>`)
+    .map((item) => `<span>${escapeDisplayHtml(item)}</span>`)
     .join("");
 
   if (elements.replySourceTitle) {
     elements.replySourceTitle.textContent = "原始留言记录";
   }
   elements.replySourceMeta.innerHTML = metaTokens;
-  elements.replySourceText.textContent = state.supplement.sourceText;
+  elements.replySourceText.textContent = normalizeDisplayText(state.supplement.sourceText);
 }
 
 function renderTabs() {
   const buttons = [...elements.tabBar.querySelectorAll("button[data-tab]")];
   const panels = [...document.querySelectorAll(".tab-panel")];
-  if (!buttons.some((button) => button.dataset.tab === state.activeTab)) {
-    state.activeTab = "entry";
+  const activeMainTab = resolveActiveMainTab(state.activeTab, buttons);
+  if (activeMainTab !== state.activeTab) {
+    state.activeTab = activeMainTab;
     persistActiveTab();
   }
-
-  for (const button of buttons) {
-    button.classList.toggle("is-active", button.dataset.tab === state.activeTab);
-  }
-
-  for (const panel of panels) {
-    panel.hidden = panel.dataset.panel !== state.activeTab;
-  }
+  applyMainTabs(state.activeTab, buttons, panels);
 }
 
 function getVisibleProjects() {
   const projects = state.bootstrap?.projects || [];
-  const keyword = state.projectKeyword.trim().toLowerCase();
-  if (!keyword) {
-    return projects;
-  }
-  return projects.filter((project) => {
-    const haystack = `${project.hospital.name} ${project.hospital.city} ${project.stage.name}`.toLowerCase();
-    return haystack.includes(keyword);
-  });
+  return getVisibleProjectsByKeyword(projects, state.projectKeyword);
 }
 
 function renderProjectSelect() {
@@ -2301,14 +3147,14 @@ function renderProjectSelect() {
     .map(
       (project) => `
         <option value="${project.id}" ${project.id === state.selectedProjectId ? "selected" : ""}>
-          ${escapeHtml(project.hospital.name)} · ${escapeHtml(project.stage.name)}
+          ${escapeDisplayHtml(project.hospital.name)} · ${escapeDisplayHtml(project.stage.name)}
         </option>
       `,
     )
     .join("");
 
   if (elements.projectStageText) {
-    elements.projectStageText.textContent = getSelectedProject()?.stage?.name || "--";
+    elements.projectStageText.textContent = normalizeDisplayText(getSelectedProject()?.stage?.name || "--");
   }
 }
 
@@ -2318,12 +3164,19 @@ function renderIntakeResult() {
   const hasResult = Boolean(state.lastResult);
   const previewReady = isPreviewReadyForCurrentInput();
   const resultStale = hasResult && !previewReady;
+  const staleReason = resultStale ? String(state.intakePreviewStaleReason || "").trim() : "";
+  const staleResultCopy =
+    staleReason === "followup-answer"
+      ? "追问回答已保存，当前结果还未纳入最新追问信息，请先重新生成。"
+      : staleReason === "supplement"
+        ? "补充内容已保存，当前结果已失效，请先重新生成。"
+        : "当前输入已变化，当前结果已失效，请先重新生成。";
   if (!state.lastResult) {
     elements.intakeResult.innerHTML = `
       <div class="result-empty">
         <p>本次结构化结果将在生成后展示于此。</p>
         <ul>
-          <li>系统会通过 Responses API 提取科室、联系人、问题标签、阶段变化与下一步动作。</li>
+          <li>系统会通过模型接口提取联系人、问题标签、阶段变化与下一步动作。</li>
           <li>如果接口未配置或提取失败，生成/提交会直接返回错误。</li>
           <li>提交完成后，项目台账、任务中心和管理汇总会同步刷新。</li>
         </ul>
@@ -2333,9 +3186,9 @@ function renderIntakeResult() {
               <div class="result-supplement">
                 <div class="result-supplement-head-row">
                   <span class="result-supplement-head">补充编辑</span>
-                  ${supplementSavedAt ? `<small>${escapeHtml(`已保存：${supplementSavedAt}`)}</small>` : ""}
+                  ${supplementSavedAt ? `<small>${escapeDisplayHtml(`已保存：${supplementSavedAt}`)}</small>` : ""}
                 </div>
-                <p>${escapeHtml(supplementText)}</p>
+                <p>${escapeDisplayHtml(supplementText)}</p>
               </div>
             `
             : ""
@@ -2349,31 +3202,41 @@ function renderIntakeResult() {
   const reviewState = ensureIntakeReviewState(state.lastResult);
   const nextActions = Array.isArray(extraction.nextActions) ? extraction.nextActions : [];
   const contacts = Array.isArray(extraction.contacts) ? extraction.contacts : [];
+  const projectWarnings = Array.isArray(getSelectedProject()?.contactReferenceWarnings)
+    ? getSelectedProject().contactReferenceWarnings
+    : [];
+  const reviewBlockingMessage = getIntakeReviewBlockingMessage(state.lastResult);
+  const warningMessages = [...new Set([...projectWarnings, ...extractionWarnings, ...(reviewBlockingMessage ? [reviewBlockingMessage] : [])])];
   elements.intakeResult.innerHTML = `
     <div class="result-head">
       <span class="result-badge ${extractionSource === "responses-api" ? "is-responses" : "is-fallback"}">
         ${extractionSource === "responses-api" ? "结构化来源：模型接口" : "结构化来源：未知"}
       </span>
       ${resultStale ? '<span class="result-badge is-stale">当前结果待重新生成</span>' : ""}
-      <span class="mini-meta">阶段更新：${escapeHtml(extraction.stageAfterUpdate || "--")}</span>
+      <span class="mini-meta">阶段更新：${escapeDisplayHtml(extraction.stageAfterUpdate || "--")}</span>
       <span class="mini-meta">管理关注：${extraction.managerAttentionNeeded ? "需要" : "无需"}</span>
     </div>
     <h3>本次结构化摘要</h3>
-    <p class="result-summary">${escapeHtml(extraction.feedbackSummary || "暂无结构化摘要")}</p>
-    <div class="result-grid">
-      <div>
-        <span>科室</span>
-        <strong>${escapeHtml(extraction.department || "未识别")}</strong>
-      </div>
-    </div>
+    <p class="result-summary">${escapeDisplayHtml(extraction.feedbackSummary || "暂无结构化摘要")}</p>
     <div class="token-row">${renderTagList(extraction.issues)}</div>
     <div class="result-block">
-      <span>联系人</span>
-      <p>${escapeHtml(contacts.map((item) => `${item.name}${item.role ? ` / ${item.role}` : ""}`).join("；") || "未识别")}</p>
+      <span>联系人摘要</span>
+      <p>${escapeDisplayHtml(
+        contacts
+          .map((item) => `${normalizeDisplayText(item.name)}${item.role ? ` / ${normalizeDisplayText(item.role)}` : ""}`)
+          .join("；") || "未识别",
+      )}</p>
     </div>
+    <section class="result-review-section">
+      <div class="result-review-section-head">
+        <span>联系人确认</span>
+        <small>${contacts.length} 位</small>
+      </div>
+      ${renderIntakeContactResolutionCards(contacts, reviewState)}
+    </section>
     <div class="result-block">
       <span>阻塞点</span>
-      <p>${escapeHtml(extraction.blockers || "暂无")}</p>
+      <p>${escapeDisplayHtml(extraction.blockers || "暂无")}</p>
     </div>
     <section class="result-review-section">
       <div class="result-review-section-head">
@@ -2407,16 +3270,19 @@ function renderIntakeResult() {
           ? `
             <ul class="result-review-list">
               ${nextActions
-                .map((item, index) =>
-                  renderIntakeReviewItem({
-                    label: `待办动作 ${index + 1}`,
+                .map((item, index) => {
+                  const reviewItemId = reviewState?.nextActions?.[index]?.itemId || `next-action-${index}`;
+                  const reviewItemLabel = ["后续事项", index + 1].join(" ");
+                  return renderIntakeReviewItem({
+                    label: reviewItemLabel,
                     title: item.title,
-                    meta: item.dueDate ? `截止：${item.dueDate}` : "未填写截止时间",
+                    meta: item.dueDate ? `截止：${formatDate(item.dueDate)}` : "未填写截止时间",
                     cancelled: Boolean(reviewState?.nextActions?.[index]?.cancelled),
                     section: "next-action",
-                    itemId: reviewState?.nextActions?.[index]?.itemId || `next-action-${index}`,
-                  }),
-                )
+                    itemId: reviewItemId,
+                    extraContent: renderIntakeActionRelatedContacts(index, reviewItemId, contacts, reviewState),
+                  });
+                })
                 .join("")}
             </ul>
           `
@@ -2424,8 +3290,8 @@ function renderIntakeResult() {
       }
     </section>
     ${
-      extractionWarnings.length
-        ? `<div class="warning-box">${escapeHtml(extractionWarnings.join(" | "))}</div>`
+      warningMessages.length
+        ? `<div class="warning-box">${escapeDisplayHtml(warningMessages.join(" | "))}</div>`
         : ""
     }
     ${
@@ -2434,9 +3300,9 @@ function renderIntakeResult() {
           <div class="result-supplement">
             <div class="result-supplement-head-row">
               <span class="result-supplement-head">补充编辑</span>
-              ${supplementSavedAt ? `<small>${escapeHtml(`已保存：${supplementSavedAt}`)}</small>` : ""}
+              ${supplementSavedAt ? `<small>${escapeDisplayHtml(`已保存：${supplementSavedAt}`)}</small>` : ""}
             </div>
-            <p>${escapeHtml(supplementText)}</p>
+            <p>${escapeDisplayHtml(supplementText)}</p>
           </div>
         `
         : ""
@@ -2444,7 +3310,7 @@ function renderIntakeResult() {
     <div class="result-footer">
       <p class="result-footer-copy">${
         resultStale
-          ? "补充内容已保存，当前结果已失效，请先重新生成。"
+          ? staleResultCopy
           : "结果已生成，提交按钮已下沉到这里。若继续修改原始记录，请先重新生成当前结果。"
       }</p>
       <div class="result-footer-actions">
@@ -2467,9 +3333,9 @@ function renderSignals() {
         .map(
           (update) => `
             <article class="signal-item is-plain">
-              <strong>${escapeHtml(update.departmentName)}</strong>
-              <p>${escapeHtml(update.feedbackSummary)}</p>
-              <span>${escapeHtml(update.visitDate || formatDate(update.createdAt))}</span>
+              <strong>${escapeDisplayHtml(update.hospitalName || update.stageAfterName || "最近推进")}</strong>
+              <p>${escapeDisplayHtml(update.feedbackSummary)}</p>
+              <span>${escapeDisplayHtml(formatDate(update.visitDate || update.createdAt))}</span>
             </article>
           `,
         )
@@ -2485,12 +3351,15 @@ function renderProjectList() {
         <button class="project-card ${project.id === state.selectedProjectId ? "is-active" : ""}" data-project-id="${project.id}" type="button">
           <div class="project-card-head">
             <div>
-              <h3>${escapeHtml(project.hospital.name)}</h3>
-              <p>${escapeHtml(project.hospital.city)} · ${escapeHtml(project.stage.name)}</p>
+              <h3>${escapeDisplayHtml(project.hospital.name)}</h3>
+              <p>${escapeDisplayHtml(project.hospital.city)} · ${escapeDisplayHtml(project.stage.name)}</p>
             </div>
-            <span class="risk-pill risk-${project.riskLevel}">${escapeHtml(project.riskLevel)}</span>
+            <div class="project-card-badge-stack">
+              <span class="department-pill${project.departmentName ? "" : " is-empty"}">${escapeDisplayHtml(project.departmentName || "无科室")}</span>
+              <span class="risk-pill risk-${project.riskLevel}">${escapeDisplayHtml(formatRiskLevelLabel(project.riskLevel))}</span>
+            </div>
           </div>
-          <p class="project-summary">${escapeHtml(project.latestSummary || "暂无摘要")}</p>
+          <p class="project-summary">${escapeDisplayHtml(project.latestSummary || "暂无摘要")}</p>
           <div class="token-row">${renderTagList(project.issueNames)}</div>
           <div class="project-meta">
             <span
@@ -2500,7 +3369,13 @@ function renderProjectList() {
             >
               上级留言 ${formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount)}
             </span>
-            <span>待办 ${project.metrics.openTaskCount}</span>
+            <span
+              class="remark-pill ${project.metrics.openTaskCount ? "" : "is-empty"}"
+              data-open-task-center-project="${project.id}"
+              title="进入该医院项目的任务中心"
+            >
+              待办 ${project.metrics.openTaskCount}
+            </span>
             <span>逾期 ${project.metrics.overdueTaskCount}</span>
             <span>${project.isStalled ? `停滞 ${project.stalledDays} 天` : `最近跟进 ${formatDate(project.lastFollowUpAt)}`}</span>
           </div>
@@ -2510,26 +3385,12 @@ function renderProjectList() {
     .join("");
 }
 
-function formatRiskLevelLabel(riskLevel) {
-  const normalized = String(riskLevel || "").trim().toLowerCase();
-  if (normalized === "high") {
-    return "高风险";
-  }
-  if (normalized === "normal") {
-    return "中风险";
-  }
-  if (normalized === "low") {
-    return "低风险";
-  }
-  return normalized || "--";
-}
-
 function renderDetailMetricCard(label, value, meta) {
   return `
     <article class="detail-metric-card">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(meta || "")}</small>
+      <span>${escapeDisplayHtml(label)}</span>
+      <strong>${escapeDisplayHtml(value)}</strong>
+      <small>${escapeDisplayHtml(meta || "")}</small>
     </article>
   `;
 }
@@ -2537,28 +3398,17 @@ function renderDetailMetricCard(label, value, meta) {
 function renderDetailEmptyState(title, copy) {
   return `
     <article class="detail-empty-state">
-      <strong>${escapeHtml(title)}</strong>
-      <p>${escapeHtml(copy)}</p>
+      <strong>${escapeDisplayHtml(title)}</strong>
+      <p>${escapeDisplayHtml(copy)}</p>
     </article>
   `;
-}
-
-function getProjectTaskSortKey(task) {
-  const timeValue = String(task?.dueAt || task?.completedAt || "").trim();
-  if (!timeValue) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-  const parsed = new Date(timeValue);
-  const timestamp = parsed.getTime();
-  return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
 }
 
 function getProjectDetailTasks(project) {
   const tasks = Array.isArray(project?.tasks)
     ? project.tasks.filter((task) => String(task?.effectiveStatus || "") !== "completed")
     : [];
-  // Sort by actionable time first, then by stable textual fallbacks so repeated
-  // expand/collapse and rerenders preserve the same order.
+  // 优先按可执行时间排序，再按稳定的文本字段收口，避免重复展开或重渲染后顺序变化。
   return tasks.sort((left, right) => {
     const leftTime = getProjectTaskSortKey(left);
     const rightTime = getProjectTaskSortKey(right);
@@ -2573,33 +3423,6 @@ function getProjectDetailTasks(project) {
   });
 }
 
-function formatProjectTaskTime(task) {
-  if (task?.dueAt) {
-    return `截止 ${formatDate(task.dueAt)}`;
-  }
-  if (task?.completedAt) {
-    return `完成 ${formatDate(task.completedAt)}`;
-  }
-  return "无时间字段";
-}
-
-function formatTaskStatusLabel(status) {
-  const normalized = String(status || "").trim();
-  if (normalized === "overdue") {
-    return "逾期";
-  }
-  if (normalized === "blocked") {
-    return "阻塞";
-  }
-  if (normalized === "in_progress") {
-    return "进行中";
-  }
-  if (normalized === "completed") {
-    return "已完成";
-  }
-  return "待办";
-}
-
 function renderProjectTaskList(project) {
   const tasks = getProjectDetailTasks(project);
   if (!tasks.length) {
@@ -2610,19 +3433,34 @@ function renderProjectTaskList(project) {
     <div class="detail-task-list" role="list" aria-label="当前项目任务列表">
       ${tasks
         .map(
-          (task) => `
+          (task) => {
+            const forwardTaskLabel = ["处理任务：", task.title || "任务"].join("");
+            return `
             <article class="detail-task-item" role="listitem">
               <div class="detail-task-item-head">
-                <strong>${escapeHtml(task.title || "未命名任务")}</strong>
-                <span class="detail-task-item-status status-${escapeHtml(task.effectiveStatus || "todo")}">${escapeHtml(formatTaskStatusLabel(task.effectiveStatus))}</span>
+                <strong>${escapeDisplayHtml(task.title || "未命名任务")}</strong>
+                <div class="detail-task-item-head-actions">
+                  <span class="detail-task-item-status status-${escapeHtml(task.effectiveStatus || "todo")}">${escapeDisplayHtml(formatTaskStatusLabel(task.effectiveStatus))}</span>
+                  <button
+                    class="detail-task-forward-button"
+                    type="button"
+                    data-open-task-center-project="${escapeHtml(project.id)}"
+                    data-open-task-center-group="${escapeHtml(resolveTaskBoardGroup(task))}"
+                    title="前往任务中心处理该医院项目任务"
+                    aria-label="${escapeHtml(forwardTaskLabel)}"
+                  >
+                    前往处理
+                  </button>
+                </div>
               </div>
-              <p class="detail-task-item-copy">${escapeHtml(task.description || "暂无任务说明")}</p>
+              <p class="detail-task-item-copy">${escapeDisplayHtml(task.description || "暂无任务说明")}</p>
               <div class="detail-task-item-meta">
-                <span>${escapeHtml(task.assigneeName || "--")}</span>
-                <span>${escapeHtml(formatProjectTaskTime(task))}</span>
+                <span>${escapeDisplayHtml(task.assigneeName || "--")}</span>
+                <span>${escapeDisplayHtml(formatProjectTaskTime(task))}</span>
               </div>
             </article>
-          `,
+          `;
+          },
         )
         .join("")}
     </div>
@@ -2649,13 +3487,22 @@ function renderProjectTaskMetricCard(project) {
         </span>
         <span class="detail-metric-toggle-icon ${expanded ? "is-expanded" : ""}" aria-hidden="true">▾</span>
       </button>
-      <small>点击可展开项目任务明细，查看负责人、截止时间与当前状态。</small>
+      <small>展开后可查看任务明细。</small>
       <div
         class="detail-metric-expand-panel"
         id="projectDetailTaskList-${escapeHtml(project.id)}"
         ${expanded ? "" : "hidden"}
       >
         ${renderProjectTaskList(project)}
+      </div>
+      <div class="detail-metric-card-actions">
+        <button
+          class="chip"
+          type="button"
+          data-open-task-center-project="${escapeHtml(project.id)}"
+        >
+          查看任务
+        </button>
       </div>
     </article>
   `;
@@ -2792,7 +3639,7 @@ function updateContactEditorCardGesture(event) {
     try {
       contactEditorGestureState.sourceCard.setPointerCapture(event.pointerId);
     } catch (error) {
-      // Ignore pointer capture failures on unsupported environments.
+      // 某些环境不支持指针捕获，这里忽略异常即可。
     }
   }
   clearContactEditorWiggleTimer();
@@ -2852,12 +3699,10 @@ function appendContactMergeAction(action) {
     sourceSnapshot: {
       name: String(action.sourceSnapshot?.name || ""),
       roleTitle: String(action.sourceSnapshot?.roleTitle || ""),
-      departmentName: String(action.sourceSnapshot?.departmentName || ""),
     },
     targetSnapshot: {
       name: String(action.targetSnapshot?.name || ""),
       roleTitle: String(action.targetSnapshot?.roleTitle || ""),
-      departmentName: String(action.targetSnapshot?.departmentName || ""),
     },
   });
 }
@@ -2893,7 +3738,6 @@ function applyContactDraftMerge(projectId, sourceIndex, targetIndex) {
 
   targetRow.name = String(sourceRow.name || "");
   targetRow.roleTitle = String(sourceRow.roleTitle || "");
-  targetRow.departmentName = String(sourceRow.departmentName || "");
 
   state.contactEditor.draftContacts.splice(sourceIndex, 1);
   return true;
@@ -2928,7 +3772,7 @@ function endContactEditorCardGesture(event) {
         sourceCard.releasePointerCapture(pointerId);
       }
     } catch (error) {
-      // Ignore pointer capture release failures.
+      // 某些环境释放指针捕获时会报错，这里忽略即可。
     }
   }
 
@@ -2950,6 +3794,7 @@ function endContactEditorCardGesture(event) {
     targetRect.top -
     sourceRect.top +
     (targetRect.height - sourceRect.height) * (1 - CONTACT_MERGE_SNAP_RATIO);
+  sourceCard.classList.remove("is-merge-source");
   sourceCard.classList.add("is-snapping");
   sourceCard.style.transition = "transform 140ms ease-out";
   sourceCard.style.transform = `translate(${snapOffsetX}px, ${snapOffsetY}px)`;
@@ -2975,80 +3820,19 @@ function isContactEditorActive(projectId) {
   return String(projectId || "").trim() && state.contactEditor.editingProjectId === String(projectId || "").trim();
 }
 
-function toContactDraftRows(contacts) {
-  return (Array.isArray(contacts) ? contacts : []).map((contact) => ({
-    id: String(contact?.id || ""),
-    name: String(contact?.name || ""),
-    roleTitle: String(contact?.roleTitle || ""),
-    departmentName: String(contact?.departmentName || ""),
-  }));
-}
-
-function normalizeContactDraftRows(rows) {
-  return (Array.isArray(rows) ? rows : []).map((row) => ({
-    id: String(row?.id || "").trim(),
-    name: String(row?.name || "").trim(),
-    roleTitle: String(row?.roleTitle || "").trim(),
-    departmentName: String(row?.departmentName || "").trim(),
-  }));
-}
-
-function validateContactDraftRows(rows) {
-  const seenNames = new Set();
-  return rows.map((row, index) => {
-    const id = String(row?.id || "").trim();
-    const name = String(row?.name || "").trim();
-    const roleTitle = String(row?.roleTitle || "").trim();
-    const departmentName = String(row?.departmentName || "").trim();
-    if (!name) {
-      throw new Error(`第 ${index + 1} 行联系人姓名不能为空`);
-    }
-    const key = name.toLowerCase();
-    if (seenNames.has(key)) {
-      throw new Error(`联系人“${name}”重复，请先去重再保存`);
-    }
-    seenNames.add(key);
-    return { id, name, roleTitle, departmentName };
-  });
-}
-
-function normalizeContactMergeActions(actions) {
-  return (Array.isArray(actions) ? actions : [])
-    .map((item) => ({
-      sourceContactId: String(item?.sourceContactId || "").trim(),
-      targetContactId: String(item?.targetContactId || "").trim(),
-      sourceSnapshot: {
-        name: String(item?.sourceSnapshot?.name || "").trim(),
-        roleTitle: String(item?.sourceSnapshot?.roleTitle || "").trim(),
-        departmentName: String(item?.sourceSnapshot?.departmentName || "").trim(),
-      },
-      targetSnapshot: {
-        name: String(item?.targetSnapshot?.name || "").trim(),
-        roleTitle: String(item?.targetSnapshot?.roleTitle || "").trim(),
-        departmentName: String(item?.targetSnapshot?.departmentName || "").trim(),
-      },
-    }))
-    .filter((item) => item.sourceContactId || item.targetContactId || item.sourceSnapshot.name || item.targetSnapshot.name);
-}
-
-function normalizeContactOriginalRows(rows) {
-  return (Array.isArray(rows) ? rows : [])
-    .map((row) => ({
-      id: String(row?.id || "").trim(),
-      name: String(row?.name || "").trim(),
-      roleTitle: String(row?.roleTitle || "").trim(),
-      departmentName: String(row?.departmentName || "").trim(),
-    }))
-    .filter((row) => row.id || row.name);
-}
-
-function generateTempContactId() {
-  return `draft-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+function hasContactEditorChanges(projectId) {
+  if (!isContactEditorActive(projectId)) {
+    return false;
+  }
+  const draftContacts = normalizeContactDraftRows(state.contactEditor.draftContacts);
+  const originalContacts = normalizeContactOriginalRows(state.contactEditor.originalContacts);
+  const mergeActions = normalizeContactMergeActions(state.contactEditor.mergeActions);
+  return JSON.stringify(draftContacts) !== JSON.stringify(originalContacts) || mergeActions.length > 0;
 }
 
 function renderContactToken(projectId, index, field, label, value, disabled) {
   const normalizedValue = String(value || "").trim();
-  const displayValue = normalizedValue || `点击填写${label}`;
+  const displayValue = normalizedValue ? normalizeDisplayText(normalizedValue) : `点击填写${label}`;
   const emptyClass = normalizedValue ? "" : " is-empty";
   return `
     <button
@@ -3060,8 +3844,8 @@ function renderContactToken(projectId, index, field, label, value, disabled) {
       data-contact-field="${escapeHtml(field)}"
       ${disabled ? "disabled" : ""}
     >
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(displayValue)}</strong>
+      <span>${escapeDisplayHtml(label)}</span>
+      <strong>${escapeDisplayHtml(displayValue)}</strong>
     </button>
   `;
 }
@@ -3073,28 +3857,32 @@ function renderContactEditorRows(projectId, draftContacts) {
   }
   return draftContacts
     .map(
-      (contact, index) => `
+      (contact, index) => {
+        const dragHandleLabel = ["拖动名片", index + 1].join(" ");
+        return `
         <article class="detail-contact-edit-card" data-contact-edit-card="true" data-project-id="${escapeHtml(projectId)}" data-contact-index="${index}">
           <div class="detail-contact-edit-card-top">
             <span>名片 ${index + 1}</span>
             <button
-              class="chip detail-contact-edit-remove"
+              class="detail-contact-drag-handle"
               type="button"
-              data-contact-action="remove"
+              data-contact-drag-handle="true"
               data-project-id="${escapeHtml(projectId)}"
               data-contact-index="${index}"
-              ${disabled ? "disabled" : ""}
+              aria-label="${escapeHtml(dragHandleLabel)}"
+              title="按住拖动名片"
             >
-              删除
+              ≡
             </button>
+            <span>仅可覆盖</span>
           </div>
           <div class="detail-contact-token-grid">
             ${renderContactToken(projectId, index, "name", "姓名", contact.name, disabled)}
             ${renderContactToken(projectId, index, "roleTitle", "角色", contact.roleTitle, disabled)}
-            ${renderContactToken(projectId, index, "departmentName", "科室", contact.departmentName, disabled)}
           </div>
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -3142,7 +3930,6 @@ function appendContactDraftRow(projectId) {
     id: generateTempContactId(),
     name: "",
     roleTitle: "",
-    departmentName: "",
   });
   renderProjectDetail();
 }
@@ -3154,8 +3941,7 @@ function removeContactDraftRow(projectId, rowIndex) {
   if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= state.contactEditor.draftContacts.length) {
     return;
   }
-  state.contactEditor.draftContacts.splice(rowIndex, 1);
-  renderProjectDetail();
+  showToast("编辑状态下不能删除联系人，请通过覆盖合并", "warn");
 }
 
 async function saveContactEditor(projectId) {
@@ -3192,7 +3978,7 @@ async function saveContactEditor(projectId) {
     if (!response.ok) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
-    state.bootstrap = payload.bootstrap;
+    applyBootstrapPayload(payload.bootstrap);
     ensureSelection();
     resetContactEditorState({ projectId: editingProjectId, silent: true });
     renderAll();
@@ -3219,6 +4005,11 @@ function renderProjectDetail() {
   const isContactEditing = isContactEditorActive(project.id);
   const contactDraftRows = isContactEditing ? state.contactEditor.draftContacts : [];
   const updates = project.updates || [];
+  const visibleProjectCount = Array.isArray(state.bootstrap?.projects) ? state.bootstrap.projects.length : 0;
+  const contactScopeHint =
+    visibleProjectCount > 1
+      ? `当前仅展示已选项目的联系人；当前账号可见 ${visibleProjectCount} 个项目。`
+      : "当前仅展示已选项目的联系人。";
   const remarksByUpdateId = new Map();
   for (const remark of remarks) {
     const key = String(remark.updateId || "");
@@ -3237,29 +4028,30 @@ function renderProjectDetail() {
   const progressText = project.isStalled
     ? `停滞 ${project.stalledDays} 天`
     : `最近跟进 ${formatDate(project.lastFollowUpAt)}`;
+  const contactWarnings = Array.isArray(project.contactReferenceWarnings) ? project.contactReferenceWarnings : [];
   elements.projectDetail.innerHTML = `
     <section class="detail-overview">
       <article class="detail-hero-card">
         <div class="detail-hero-head">
           <div class="detail-hero-copy-wrap">
-            <p class="panel-eyebrow">${escapeHtml(regionLine || project.region?.name || "--")}</p>
-            <h3>${escapeHtml(project.hospital.name)}</h3>
+            <p class="panel-eyebrow">${escapeDisplayHtml(regionLine || project.region?.name || "--")}</p>
+            <h3>${escapeDisplayHtml(project.hospital.name)}</h3>
           </div>
           <div class="detail-pill-row">
-            <span class="stage-pill">${escapeHtml(project.stage.name)}</span>
-            <span class="risk-pill risk-${escapeHtml(project.riskLevel)}">${escapeHtml(formatRiskLevelLabel(project.riskLevel))}</span>
+            <span class="stage-pill">${escapeDisplayHtml(project.stage.name)}</span>
+            <span class="risk-pill risk-${escapeHtml(project.riskLevel)}">${escapeDisplayHtml(formatRiskLevelLabel(project.riskLevel))}</span>
           </div>
         </div>
-        <p class="detail-copy">${escapeHtml(project.latestSummary || "暂无推进摘要")}</p>
+        <p class="detail-copy">${escapeDisplayHtml(project.latestSummary || "暂无推进摘要")}</p>
         <div class="token-row detail-token-row">${renderTagList(project.issueNames)}</div>
       </article>
 
       <article class="detail-action-card">
         <p class="panel-eyebrow">当前推进</p>
-        <strong>${escapeHtml(nextActionText)}</strong>
-        <p>${escapeHtml(projectHealthText)} · ${escapeHtml(progressText)}</p>
+        <strong>${escapeDisplayHtml(nextActionText)}</strong>
+        <p>${escapeDisplayHtml(projectHealthText)} · ${escapeDisplayHtml(progressText)}</p>
         <div class="detail-action-meta">
-          <span>负责人：${escapeHtml(project.owner?.name || "--")}</span>
+          <span>负责人：${escapeDisplayHtml(project.owner?.name || "--")}</span>
           <span>上级留言 ${formatRemarkRatio(project.metrics.remarkRepliedCount, project.metrics.remarkCount)}</span>
         </div>
       </article>
@@ -3275,31 +4067,45 @@ function renderProjectDetail() {
     <section class="detail-board">
       <article class="detail-section detail-section-card">
         <div class="detail-section-head">
-          <h4>关键联系人</h4>
+          <div class="detail-contact-head-copy">
+            <h4>关键联系人</h4>
+            <span>${escapeDisplayHtml(contactScopeHint)}</span>
+          </div>
           <div class="detail-contact-head-actions">
             <span>${isContactEditing ? `${contactDraftRows.length} 行` : `${contacts.length} 位`}</span>
-            <button
-              class="${isContactEditing ? "primary-button detail-contact-complete-trigger" : "chip detail-contact-edit-trigger"}"
-              type="button"
-              data-contact-action="${isContactEditing ? "save" : "edit"}"
-              data-project-id="${escapeHtml(project.id)}"
-              ${state.busy || state.followup.busy || state.contactEditor.saving ? "disabled" : ""}
-            >
-              ${state.contactEditor.saving ? "保存中..." : isContactEditing ? "完成" : "编辑"}
-            </button>
+            ${
+              isContactEditing
+                ? ""
+                : `
+                    <button
+                      class="chip detail-contact-edit-trigger"
+                      type="button"
+                      data-contact-action="edit"
+                      data-project-id="${escapeHtml(project.id)}"
+                      ${state.busy || state.followup.busy || state.contactEditor.saving ? "disabled" : ""}
+                    >
+                      编辑
+                    </button>
+                  `
+            }
           </div>
         </div>
+        ${
+          contactWarnings.length
+            ? `<div class="warning-box detail-contact-warning-box">${escapeDisplayHtml(contactWarnings.join(" | "))}</div>`
+            : ""
+        }
         ${
           isContactEditing
             ? `
                 <div class="detail-contact-edit-panel">
-                  <p class="detail-contact-edit-hint">点击词条可编辑文本；拖拽名片覆盖超过 3/4 后松手将提示“是否覆盖”；长按名片 1 秒会轻微摆动提示可移动。</p>
+                  <p class="detail-contact-edit-hint">点击词条可编辑文本；编辑状态下名片不能删除，只能通过顶部中央手柄拖拽覆盖合并；同名联系人允许并存，但至少需要角色来区分。</p>
                   <div class="detail-contact-edit-list">
                     ${renderContactEditorRows(project.id, contactDraftRows)}
                   </div>
                   <div class="detail-contact-edit-actions">
                     <button
-                      class="chip"
+                      class="chip detail-contact-edit-action"
                       type="button"
                       data-contact-action="add"
                       data-project-id="${escapeHtml(project.id)}"
@@ -3308,13 +4114,22 @@ function renderProjectDetail() {
                       新增名片
                     </button>
                     <button
-                      class="chip"
+                      class="chip detail-contact-edit-action"
                       type="button"
                       data-contact-action="cancel"
                       data-project-id="${escapeHtml(project.id)}"
                       ${state.contactEditor.saving ? "disabled" : ""}
                     >
-                      退出编辑
+                      放弃编辑
+                    </button>
+                    <button
+                      class="primary-button detail-contact-edit-action detail-contact-complete-trigger"
+                      type="button"
+                      data-contact-action="save"
+                      data-project-id="${escapeHtml(project.id)}"
+                      ${state.busy || state.followup.busy || state.contactEditor.saving ? "disabled" : ""}
+                    >
+                      ${state.contactEditor.saving ? "保存中..." : "完成"}
                     </button>
                   </div>
                 </div>
@@ -3327,9 +4142,8 @@ function renderProjectDetail() {
                           .map(
                             (contact) => `
                       <article class="contact-card detail-contact-card" data-contact-card="true" data-project-id="${escapeHtml(project.id)}">
-                        <strong>${escapeHtml(contact.name)}</strong>
-                        <span>${escapeHtml(contact.roleTitle || "角色未填写")}</span>
-                        <small>${escapeHtml(contact.departmentName || "未填写科室")}</small>
+                        <strong>${escapeDisplayHtml(contact.name)}</strong>
+                        <span>${escapeDisplayHtml(contact.roleTitle || "角色未填写")}</span>
                       </article>
                     `,
                           )
@@ -3345,24 +4159,24 @@ function renderProjectDetail() {
       <article class="detail-section detail-section-card">
         <div class="detail-section-head">
           <h4>项目看板</h4>
-          <span>${escapeHtml(project.owner?.name || "--")}</span>
+          <span>${escapeDisplayHtml(project.owner?.name || "--")}</span>
         </div>
         <div class="detail-note-grid">
           <article class="detail-note-card">
             <span>医院等级</span>
-            <strong>${escapeHtml(project.hospital.level || "--")}</strong>
+            <strong>${escapeDisplayHtml(project.hospital.level || "--")}</strong>
           </article>
           <article class="detail-note-card">
             <span>所在城市</span>
-            <strong>${escapeHtml(project.hospital.city || "--")}</strong>
+            <strong>${escapeDisplayHtml(project.hospital.city || "--")}</strong>
           </article>
           <article class="detail-note-card">
             <span>管理关注</span>
-            <strong>${escapeHtml(projectHealthText)}</strong>
+            <strong>${escapeDisplayHtml(projectHealthText)}</strong>
           </article>
           <article class="detail-note-card">
             <span>项目状态</span>
-            <strong>${escapeHtml(project.isStalled ? `停滞 ${project.stalledDays} 天` : "持续推进中")}</strong>
+            <strong>${escapeDisplayHtml(project.isStalled ? `停滞 ${project.stalledDays} 天` : "持续推进中")}</strong>
           </article>
         </div>
       </article>
@@ -3381,11 +4195,27 @@ function renderProjectDetail() {
                   (update) => `
           <article class="timeline-item">
             <div class="timeline-top">
-              <strong>${escapeHtml(update.departmentName || "未填写科室")}</strong>
-              <span>${escapeHtml(update.visitDate || formatDate(update.createdAt))}</span>
+              <strong>${escapeDisplayHtml(update.stageAfterName || "推进记录")}</strong>
+              <span>${escapeDisplayHtml(formatDate(update.visitDate || update.createdAt))}</span>
             </div>
-            <p>${escapeHtml(update.feedbackSummary || "暂无推进摘要")}</p>
-            ${update.blockers ? `<small>阻塞：${escapeHtml(update.blockers)}</small>` : ""}
+            <p>${escapeDisplayHtml(update.feedbackSummary || "暂无推进摘要")}</p>
+            ${update.blockers ? `<small>阻塞：${escapeDisplayHtml(update.blockers)}</small>` : ""}
+            ${
+              canLeaveProjectRemarks
+                ? `
+                  <div class="timeline-item-footer">
+                    <button
+                      class="chip timeline-item-remark-trigger"
+                      type="button"
+                      data-create-project-remark="${escapeHtml(project.id)}"
+                      data-update-id="${escapeHtml(update.id)}"
+                    >
+                      留言
+                    </button>
+                  </div>
+                `
+                : ""
+            }
             ${renderTimelineRemarkRows(remarksByUpdateId.get(update.id) || [])}
           </article>
         `,
@@ -3421,10 +4251,6 @@ function renderProjectDetail() {
   `;
 }
 
-function normalizeLedgerSubTab(rawValue) {
-  return String(rawValue || "").trim().toLowerCase() === "detail" ? "detail" : "list";
-}
-
 function renderLedgerSubTabs() {
   const activeLedgerSubTab = normalizeLedgerSubTab(state.ledgerSubTab);
   state.ledgerSubTab = activeLedgerSubTab;
@@ -3432,30 +4258,14 @@ function renderLedgerSubTabs() {
   const listTabButton = document.querySelector("[data-ledger-subtab='list']");
   const detailTabButton = document.querySelector("[data-ledger-subtab='detail']");
   const subtabCopy = document.querySelector("#ledgerSubtabCopy");
-  const subtabCopyMap = {
-    list: "按医院项目集中查看当前阶段、任务状态、问题标签与最新推进摘要",
-    detail: "查看单个医院项目的关键联系人、历史更新、上级留言与当前推进计划",
-  };
-
-  for (const button of [listTabButton, detailTabButton]) {
-    if (!button) {
-      continue;
-    }
-    const isActive = button.dataset.ledgerSubtab === activeLedgerSubTab;
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-selected", isActive ? "true" : "false");
-    button.setAttribute("tabindex", isActive ? "0" : "-1");
-  }
-
-  if (elements.projectList) {
-    elements.projectList.hidden = activeLedgerSubTab !== "list";
-  }
-  if (elements.projectDetail) {
-    elements.projectDetail.hidden = activeLedgerSubTab !== "detail";
-  }
-  if (subtabCopy) {
-    subtabCopy.textContent = subtabCopyMap[activeLedgerSubTab];
-  }
+  applyLedgerSubTabs({
+    activeLedgerSubTab,
+    listTabButton,
+    detailTabButton,
+    projectList: elements.projectList,
+    projectDetail: elements.projectDetail,
+    subtabCopy,
+  });
 }
 
 function renderTimelineRemarkRows(remarks) {
@@ -3478,13 +4288,13 @@ function renderTimelineRemarkRows(remarks) {
               remark.createdAt ? formatDateTime(remark.createdAt) : "",
             ]
               .filter(Boolean)
-              .map((item) => `<span>${escapeHtml(item)}</span>`)
+              .map((item) => `<span>${escapeDisplayHtml(item)}</span>`)
               .join("");
             const replyMeta = [
               replyByUserName ? `回复人：${replyByUserName}` : "已回复",
             ]
               .filter(Boolean)
-              .map((item) => `<span>${escapeHtml(item)}</span>`)
+              .map((item) => `<span>${escapeDisplayHtml(item)}</span>`)
               .join("");
             const readMetaText = remark.isRead
               ? [readByUserName ? `已读人：${readByUserName}` : "已读", readAtText].filter(Boolean).join(" · ")
@@ -3503,7 +4313,7 @@ function renderTimelineRemarkRows(remarks) {
                 </div>
                 <div class="timeline-remark-section">
                   <p class="timeline-remark-label">留言内容</p>
-                  <p class="timeline-remark-content">${escapeHtml(remark.content || "--")}</p>
+                  <p class="timeline-remark-content">${escapeDisplayHtml(remark.content || "--")}</p>
                 </div>
                 ${
                   replyContent
@@ -3511,13 +4321,13 @@ function renderTimelineRemarkRows(remarks) {
                       <div class="remark-reply timeline-remark-reply">
                         <span>回复记录</span>
                         <div class="timeline-remark-meta">${replyMeta}</div>
-                        <p>${escapeHtml(replyContent)}</p>
+                        <p>${escapeDisplayHtml(replyContent)}</p>
                       </div>
                     `
                     : '<p class="remark-status is-pending">该留言尚未回复，可点击右侧按钮立即回复。</p>'
                 }
                 <div class="timeline-remark-foot">
-                  <small class="timeline-remark-read">${escapeHtml(readMetaText)}</small>
+                  <small class="timeline-remark-read">${escapeDisplayHtml(readMetaText)}</small>
                   <div class="timeline-remark-actions">
                     ${actionMarkup}
                     ${
@@ -3536,7 +4346,51 @@ function renderTimelineRemarkRows(remarks) {
   `;
 }
 
-async function createProjectRemark(projectId) {
+async function createProjectRemarkFromHistoryEntry({ historySessionId, historyQuestionId, session }) {
+  const normalizedHistorySessionId = String(historySessionId || "").trim();
+  const normalizedHistoryQuestionId = String(historyQuestionId || "").trim();
+  if (!normalizedHistorySessionId || !normalizedHistoryQuestionId) {
+    showToast("历史条目标识缺失，请刷新后重试", "error");
+    return;
+  }
+
+  const matchedSession =
+    session && session.sessionId === normalizedHistorySessionId
+      ? session
+      : (state.historyInfo.sessions || []).find((item) => item.sessionId === normalizedHistorySessionId) || null;
+  if (!matchedSession) {
+    showToast("历史信息已变化，请刷新后重试", "warn");
+    return;
+  }
+
+  const matchedHistoryItem = (matchedSession.history || []).find((item) => item.id === normalizedHistoryQuestionId) || null;
+  if (!matchedHistoryItem) {
+    showToast("历史条目已变化，请刷新后重试", "warn");
+    return;
+  }
+
+  const project = state.bootstrap?.projects?.find((item) => item.id === matchedSession.projectId) || null;
+  if (!project) {
+    showToast("未找到关联项目，请刷新后重试", "error");
+    return;
+  }
+
+  const toUserId = String(matchedHistoryItem.answer?.submittedByUserId || project.owner?.id || "").trim();
+  if (!toUserId) {
+    showToast("未找到留言接收人，请刷新后重试", "error");
+    return;
+  }
+
+  const targetName = String(matchedHistoryItem.answer?.submittedByUserName || project.owner?.name || "专员").trim() || "专员";
+  await createProjectRemark(project.id, {
+    toUserId,
+    historySessionId: normalizedHistorySessionId,
+    historyQuestionId: normalizedHistoryQuestionId,
+    promptTitle: `请输入给“${targetName}”的留言内容`,
+  });
+}
+
+async function createProjectRemark(projectId, options = {}) {
   const normalizedProjectId = String(projectId || "").trim();
   if (!normalizedProjectId) {
     return;
@@ -3548,7 +4402,36 @@ async function createProjectRemark(projectId) {
     return;
   }
 
-  const content = window.prompt(`请输入给“${project.hospital?.name || "当前项目"}”的留言内容`, "");
+  const toUserId = String(options?.toUserId || "").trim();
+  const updateId = String(options?.updateId || "").trim();
+  const historySessionId = String(options?.historySessionId || "").trim();
+  const historyQuestionId = String(options?.historyQuestionId || "").trim();
+  const promptTitle = String(options?.promptTitle || "").trim();
+  const targetUpdate = updateId ? (project.updates || []).find((item) => String(item?.id || "") === updateId) || null : null;
+
+  if (updateId && !targetUpdate) {
+    showToast("目标纪要已变化，请刷新后重试", "error");
+    return;
+  }
+
+  const hasHistoryLinkage = Boolean(historySessionId || historyQuestionId);
+  if (hasHistoryLinkage && (!historySessionId || !historyQuestionId)) {
+    showToast("历史关联参数不完整，请刷新后重试", "error");
+    return;
+  }
+
+  if (toUserId) {
+    const existsInLookups = (state.bootstrap?.lookups?.users || []).some((user) => String(user?.id || "") === toUserId);
+    if (!existsInLookups) {
+      showToast("留言接收人不存在，请刷新后重试", "error");
+      return;
+    }
+  }
+
+  const defaultPromptTitle = targetUpdate
+    ? `请输入给“${normalizeDisplayText(project.hospital?.name || targetUpdate.hospitalName || "当前项目")} ${formatDate(targetUpdate.visitDate || targetUpdate.createdAt)}”纪要的留言内容`
+    : `请输入给“${normalizeDisplayText(project.hospital?.name || "当前项目")}”的留言内容`;
+  const content = window.prompt(promptTitle || defaultPromptTitle, "");
   if (content === null) {
     return;
   }
@@ -3565,14 +4448,20 @@ async function createProjectRemark(projectId) {
     const response = await fetch(`/api/projects/${encodeURIComponent(normalizedProjectId)}/remarks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: trimmedContent }),
+      body: JSON.stringify({
+        content: trimmedContent,
+        toUserId: toUserId || undefined,
+        updateId: updateId || undefined,
+        historySessionId: historySessionId || undefined,
+        historyQuestionId: historyQuestionId || undefined,
+      }),
     });
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
 
-    state.bootstrap = payload.bootstrap;
+    applyBootstrapPayload(payload.bootstrap);
     state.selectedProjectId = normalizedProjectId;
     state.activeRemarkId = payload.remark?.id || "";
     ensureSelection();
@@ -3614,7 +4503,6 @@ function clearSupplementContext() {
   state.supplement.updateId = "";
   state.supplement.sourceText = "";
   state.supplement.sourceDate = "";
-  state.supplement.sourceDepartment = "";
   state.supplement.savedText = "";
   state.supplement.draftText = "";
   state.supplement.savedAt = "";
@@ -3640,7 +4528,6 @@ function startSupplementFromRemark(remarkId) {
   state.supplement.updateId = remark.updateId || "";
   state.supplement.sourceText = remark.content || "";
   state.supplement.sourceDate = update?.visitDate || "";
-  state.supplement.sourceDepartment = update?.departmentName || "";
   state.supplement.savedText = "";
   state.supplement.draftText = "";
   state.supplement.savedAt = "";
@@ -3652,6 +4539,7 @@ function startSupplementFromRemark(remarkId) {
 
   applyVisitDatePresetFromDate(update?.visitDate || "");
   elements.noteInput.value = String(remark.replyContent || "").trim();
+  clearDepartmentInput();
   invalidateIntakePreview();
   resetFollowupState();
   renderAll();
@@ -3701,7 +4589,7 @@ function saveSupplementDraft() {
     elements.supplementDialog.hidden = true;
   }
   if (changed) {
-    invalidateIntakePreview({ preserveResult: true });
+    invalidateIntakePreview({ preserveResult: true, staleReason: "supplement" });
   }
   renderAll();
   showToast(
@@ -3761,7 +4649,7 @@ async function markProjectRemarkAsRead(remarkId) {
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
 
-    state.bootstrap = payload.bootstrap;
+    applyBootstrapPayload(payload.bootstrap);
     state.activeRemarkId = payload.remark?.id || remarkId;
     ensureSelection();
     renderAll();
@@ -3795,7 +4683,7 @@ async function ensureSupplementRemarkReply(note) {
     throw new Error(payload.error || `HTTP ${response.status}`);
   }
 
-  state.bootstrap = payload.bootstrap;
+  applyBootstrapPayload(payload.bootstrap);
   state.activeRemarkId = state.supplement.remarkId;
   state.supplement.syncedReplyText = reply;
   state.supplement.replySynced = true;
@@ -3840,37 +4728,33 @@ function focusNextProjectRemark(projectId) {
 }
 
 function renderTaskBoard() {
-  const groups = [
-    ["overdue", "已逾期"],
-    ["in_progress", "处理中"],
-    ["todo", "待处理"],
-    ["completed", "已完成"],
-  ];
+  ensureTaskBoardState();
+  const filteredTasks = getTaskBoardFilteredTasks();
+  const activeGroup = String(state.taskBoard.activeGroup || "todo").trim();
+  const tasks = sortTaskBoardTasks(filteredTasks.filter((task) => resolveTaskBoardGroup(task) === activeGroup)).map(
+    (task) => decorateTaskBoardTask(task),
+  );
+  const groupDefs = [
+    { id: "overdue", label: "已逾期" },
+    { id: "todo", label: "待处理" },
+    { id: "completed", label: "已完成" },
+  ].map((group) => ({
+    ...group,
+    count: filteredTasks.filter((task) => resolveTaskBoardGroup(task) === group.id).length,
+  }));
 
-  elements.taskBoard.innerHTML = groups
-    .map(([key, label]) => {
-      const tasks = state.bootstrap.tasks.filter((task) => task.effectiveStatus === key);
-      return `
-        <section class="task-column">
-          <div class="task-column-head">
-            <h3>${label}</h3>
-            <span>${tasks.length}</span>
-          </div>
-          <div class="task-list">
-            ${tasks.length ? tasks.map((task) => renderTaskCard(task)).join("") : "<p class=\"empty-copy\">暂无任务</p>"}
-          </div>
-        </section>
-      `;
-    })
-    .join("");
-}
-
-function normalizeInsightSubTab(rawValue) {
-  const value = String(rawValue || "").trim().toLowerCase();
-  if (value === "recent" || value === "management" || value === "summary") {
-    return value;
-  }
-  return "summary";
+  elements.taskBoard.innerHTML = renderTaskBoardMarkup({
+    projectOptions: getVisibleTaskBoardProjectOptions(),
+    selectedProjectId: state.taskBoard.projectFilterId,
+    projectSearchOpen: state.taskBoard.projectSearchOpen,
+    projectKeyword: state.taskBoard.projectKeyword,
+    activeGroup,
+    groups: groupDefs,
+    sortField: state.taskBoard.sortField,
+    sortDirection: state.taskBoard.sortDirection,
+    tasks,
+    renderTaskCard,
+  });
 }
 
 function renderInsights() {
@@ -3895,75 +4779,22 @@ function renderInsights() {
     { id: "management", label: "三级管理" },
   ];
 
-  const summaryContent = `
-    <section class="insight-section">
-      <h3>管理汇总</h3>
-      <p class="section-copy">按阶段分布与高频问题汇总当前项目状态，支持管理判断与资源配置。</p>
-      <section class="insight-sub-section">
-        <h4>阶段分布</h4>
-        ${dashboard.stageDistribution.map((item) => renderBarRow(item.label, item.value, dashboard.totalProjects)).join("")}
-      </section>
-      <section class="insight-sub-section">
-        <h4>高频问题</h4>
-        <div class="token-row">${renderTagList(dashboard.issueDistribution.map((item) => `${item.label} ${item.value}`))}</div>
-      </section>
-    </section>
-  `;
-
-  const recentUpdates = signals?.recentUpdates || [];
-  const recentContent = `
-    <section class="insight-section">
-      <h3>最近动态</h3>
-      <p class="section-copy">按最近纪要查看医院推进情况，可直接进入对应医院台账详情。</p>
-      ${
-        recentUpdates.length
-          ? recentUpdates
-              .map(
-                (update) => `
-        <article class="insight-note">
-          <div class="insight-note-head">
-            <div class="insight-note-copy">
-              <strong>${escapeHtml(update.departmentName)}</strong>
-              <span class="insight-note-hospital">${escapeHtml(resolveUpdateHospitalName(update))}</span>
-            </div>
-            <button class="chip insight-note-enter" type="button" data-focus-project="${escapeHtml(update.projectId)}">进入</button>
-          </div>
-          <p>${escapeHtml(update.feedbackSummary)}</p>
-          <div class="insight-note-meta">
-            <span>${escapeHtml(update.visitDate || formatDate(update.createdAt))}</span>
-          </div>
-        </article>
-      `,
-              )
-              .join("")
-          : '<p class="empty-copy">暂无最近动态。</p>'
-      }
-    </section>
-  `;
-
-  const managementContent = `
-    <section class="insight-section">
-      <h3>三级管理</h3>
-      <div class="management-level-grid">
-        ${(management?.levels || []).map((level) => `
-          <article class="management-level-card">
-            <span>${escapeHtml(level.name)}</span>
-            <strong>${Number(level.count) || 0}</strong>
-          </article>
-        `).join("")}
-      </div>
-      <div class="management-user-list">
-        ${
-          (management?.visibleUsers || []).length
-            ? management.visibleUsers
-                .map((user) => renderManagementUserItem(user, canManageUsers))
-                .join("")
-            : '<p class="empty-copy">暂无可见成员</p>'
-        }
-      </div>
-      ${renderBackupAdminPanel(canManageBackups)}
-    </section>
-  `;
+  const summaryContent = renderInsightSummaryContent({
+    dashboard,
+    renderBarRow,
+    renderTagList,
+  });
+  const recentContent = renderInsightRecentContent({
+    recentUpdates: signals?.recentUpdates || [],
+    resolveUpdateHospitalName,
+  });
+  const managementContent = renderInsightManagementContent({
+    management,
+    canManageUsers,
+    canManageBackups,
+    renderManagementUserItem,
+    renderBackupAdminPanel,
+  });
 
   let subTabContent = summaryContent;
   if (activeInsightSubTab === "recent") {
@@ -3972,41 +4803,11 @@ function renderInsights() {
     subTabContent = managementContent;
   }
 
-  elements.insightPanel.innerHTML = `
-    <div class="insight-subtab-bar" role="tablist" aria-label="姹囨€诲瓙瀵艰埅">
-      ${subTabs
-        .map(
-          (tab) => `
-        <button
-          class="chip insight-subtab-button${tab.id === activeInsightSubTab ? " is-active" : ""}"
-          type="button"
-          role="tab"
-          data-insight-subtab="${tab.id}"
-          aria-selected="${tab.id === activeInsightSubTab ? "true" : "false"}"
-        >${escapeHtml(tab.label)}</button>
-      `,
-        )
-        .join("")}
-    </div>
-    ${subTabContent}
-  `;
-}
-
-function normalizeUserRole(rawRole) {
-  const role = String(rawRole || "").trim().toLowerCase();
-  if (
-    role === "manager" ||
-    role === "regional_manager" ||
-    role === "district_manager" ||
-    role === "director" ||
-    role === "vp"
-  ) {
-    return "manager";
-  }
-  if (role === "supervisor") {
-    return "supervisor";
-  }
-  return "specialist";
+  elements.insightPanel.innerHTML = renderInsightPanelMarkup({
+    activeInsightSubTab,
+    subTabs,
+    subTabContent,
+  });
 }
 
 function isCurrentUserManager() {
@@ -4024,230 +4825,23 @@ function canCurrentUserLeaveProjectRemarks() {
   return role === "manager" || role === "supervisor";
 }
 
-function formatBackupSize(bytes) {
-  const size = Number(bytes) || 0;
-  if (size < 1024) {
-    return `${size} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-}
-
 function renderBackupAdminPanel(canManageBackups) {
-  if (!canManageBackups) {
-    return "";
-  }
-  const backups = state.backups.list || [];
-  const availableDates = state.backups.availableDates || [];
-  const selectedDate =
-    availableDates.includes(state.backups.selectedDate) ? state.backups.selectedDate : availableDates[0] || "";
-  const backupsForDate = selectedDate ? backups.filter((item) => item.date === selectedDate) : [];
-  const maxBackups = state.backups.maxBackups || 30;
-  const schedule = state.backups.policy?.schedule || {};
-  const scheduler = state.backups.scheduler || {};
-  const scheduleText = formatBackupSchedule(schedule);
-  const lastRunText = scheduler.lastRunAt ? formatDateTime(scheduler.lastRunAt) : "--";
-  const nextRunText = scheduler.nextRunAt ? formatDateTime(scheduler.nextRunAt) : "--";
+  const panelState = resolveBackupPanelState(state.backups);
+  const scheduleText = formatBackupSchedule(panelState.schedule);
   const actionDisabled = state.backups.busy || state.busy || state.auth.busy;
-  const timeValue = `${String(Number(schedule.hour) || 0).padStart(2, "0")}:${String(
-    Number(schedule.minute) || 0,
-  ).padStart(2, "0")}`;
-  const frequency = String(schedule.frequency || "daily");
-  const weekday = Number.isInteger(Number(schedule.weekday)) ? Number(schedule.weekday) : 1;
-  const weekdayOptions = [0, 1, 2, 3, 4, 5, 6]
-    .map(
-      (value) =>
-        `<option value="${value}"${value === weekday ? " selected" : ""}>${escapeHtml(formatWeekday(value))}</option>`,
-    )
-    .join("");
-  const dateOptions = availableDates
-    .map(
-      (value) =>
-        `<option value="${escapeHtml(value)}"${value === selectedDate ? " selected" : ""}>${escapeHtml(value)}</option>`,
-    )
-    .join("");
-
-  return `
-    <section class="backup-panel">
-      <div class="backup-panel-head">
-        <div>
-          <h4>数据备份</h4>
-          <p class="backup-copy">${escapeHtml(scheduleText)}，最多保留 ${maxBackups} 份，当前 ${backups.length} 份。</p>
-          <p class="backup-meta">上次执行时间：${lastRunText} · 下次执行时间：${nextRunText}</p>
-        </div>
-        <button class="chip" type="button" data-backup-action="create" ${actionDisabled ? "disabled" : ""}>立即备份</button>
-      </div>
-      ${
-        state.backups.error
-          ? `<p class="backup-error">${escapeHtml(state.backups.error)}</p>`
-          : ""
-      }
-      <div class="backup-schedule-form">
-        <label class="backup-field">
-          <span>备份频率</span>
-          <select data-backup-frequency ${actionDisabled ? "disabled" : ""}>
-            <option value="daily"${frequency === "daily" ? " selected" : ""}>每天</option>
-            <option value="weekly"${frequency === "weekly" ? " selected" : ""}>每周</option>
-          </select>
-        </label>
-        <label class="backup-field">
-          <span>执行时间</span>
-          <input type="time" data-backup-time value="${timeValue}" ${actionDisabled ? "disabled" : ""} />
-        </label>
-        <label class="backup-field">
-          <span>每周执行日</span>
-          <select data-backup-weekday ${actionDisabled || frequency !== "weekly" ? "disabled" : ""}>
-            ${weekdayOptions}
-          </select>
-        </label>
-        <button class="chip" type="button" data-backup-action="save-schedule" ${actionDisabled ? "disabled" : ""}>保存计划</button>
-      </div>
-      <div class="backup-restore-bar">
-        <label class="backup-field">
-          <span>恢复日期</span>
-          <select data-backup-date-select ${actionDisabled || !availableDates.length ? "disabled" : ""}>
-            ${dateOptions || '<option value="">暂无可恢复日期</option>'}
-          </select>
-        </label>
-        <button class="chip" type="button" data-backup-action="restore-date" ${actionDisabled || !selectedDate ? "disabled" : ""}>恢复所选日期最新备份</button>
-      </div>
-      <div class="backup-list">
-        ${
-          backupsForDate.length
-            ? backupsForDate
-                .map(
-                  (item) => `
-              <article class="backup-item">
-                <div class="backup-item-main">
-                  <strong>${formatDateTime(item.createdAt)}</strong>
-                  <span>${item.trigger === "auto" ? "自动备份" : "手动备份"} · ${formatBackupSize(item.sizeBytes)}</span>
-                </div>
-                <span class="backup-item-tag">${escapeHtml(item.fileName)}</span>
-              </article>
-            `,
-                )
-                .join("")
-            : `<p class="empty-copy">${state.backups.busy ? "备份列表加载中..." : "所选日期暂无备份记录"}</p>`
-        }
-      </div>
-    </section>
-  `;
-}
-
-function formatBackupSchedule(schedule) {
-  const frequency = String(schedule?.frequency || "daily");
-  const hour = String(Number(schedule?.hour) || 0).padStart(2, "0");
-  const minute = String(Number(schedule?.minute) || 0).padStart(2, "0");
-  if (frequency === "weekly") {
-    return `每周 ${formatWeekday(schedule?.weekday)} ${hour}:${minute} 自动备份`;
-  }
-  return `每天 ${hour}:${minute} 自动备份`;
-}
-
-function formatWeekday(value) {
-  const labels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-  const index = Number(value);
-  return labels[index] || "周一";
+  return renderBackupAdminPanelMarkup({
+    canManageBackups,
+    backupsState: state.backups,
+    panelState,
+    actionDisabled,
+    scheduleText,
+  });
 }
 
 function renderManagementUserItem(user, canManageUsers) {
-  const safeUserId = escapeHtml(user.id || "");
-  const roleName = escapeHtml(user.roleName || user.role || "--");
-  const regionName = escapeHtml(user.regionName || "--");
   const regions = getAvailableRegions();
-  if (!canManageUsers || !regions.length) {
-    return `
-      <article class="management-user-item">
-        <div>
-          <strong>${escapeHtml(user.name)}</strong>
-          <span>${roleName}</span>
-        </div>
-        <span>${regionName}</span>
-      </article>
-    `;
-  }
-
-  const options = regions
-    .map((region) => {
-      const regionId = String(region.id || "");
-      const selected = regionId === String(user.regionId || "") ? " selected" : "";
-      return `<option value="${escapeHtml(regionId)}"${selected}>${escapeHtml(region.name || regionId || "--")}</option>`;
-    })
-    .join("");
-
-  return `
-    <article class="management-user-item">
-      <div>
-        <strong>${escapeHtml(user.name)}</strong>
-        <span>${roleName}</span>
-      </div>
-      <div class="management-user-actions">
-        <select data-management-region-select="${safeUserId}">${options}</select>
-        <button class="chip" type="button" data-management-action="save-region" data-user-id="${safeUserId}">保存区域</button>
-      </div>
-    </article>
-  `;
-}
-
-function renderTaskCard(task) {
-  const actions = [];
-  if (task.status !== "in_progress" && task.status !== "completed") {
-    actions.push(`<button type="button" data-task-id="${task.id}" data-task-status="in_progress">开始处理</button>`);
-  }
-  if (task.status !== "completed") {
-    actions.push(`<button type="button" data-task-id="${task.id}" data-task-status="completed">标记完成</button>`);
-  }
-  if (task.status === "completed") {
-    actions.push(`<button type="button" data-task-id="${task.id}" data-task-status="todo">转为待处理</button>`);
-  }
-
-  return `
-    <article class="task-card ${task.effectiveStatus}">
-      <div class="task-card-top">
-        <strong>${escapeHtml(task.title)}</strong>
-        <span>${escapeHtml(task.hospitalName)}</span>
-      </div>
-      <p>${escapeHtml(task.description || "")}</p>
-      <div class="task-meta">
-        <span>${escapeHtml(task.assigneeName)}</span>
-        <span>${task.dueAt ? formatDate(task.dueAt) : "无截止时间"}</span>
-      </div>
-      <div class="task-actions">${actions.join("")}</div>
-    </article>
-  `;
-}
-
-function renderSignalGroup(title, items, mode) {
-  return `
-    <section class="signal-group">
-      <h3>${escapeHtml(title)}</h3>
-      ${(items || []).length ? items.map((item) => {
-        if (mode === "task") {
-          return `<article class="signal-item is-plain"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.hospitalName)}</p><span>${item.dueAt ? formatDate(item.dueAt) : "无截止时间"}</span></article>`;
-        }
-        return `<button class="signal-item" type="button" data-focus-project="${item.id}"><strong>${escapeHtml(item.hospital.name)}</strong><p>${escapeHtml(item.latestSummary || item.blockers || "需要查看详情")}</p><span>${escapeHtml(item.stage.name)}</span></button>`;
-      }).join("") : "<p class=\"empty-copy\">暂无信号</p>"}
-    </section>
-  `;
-}
-
-function renderBarRow(label, value, total) {
-  const width = total ? Math.max(10, Math.round((value / total) * 100)) : 0;
-  return `
-    <div class="bar-row">
-      <span>${escapeHtml(label)}</span>
-      <div class="bar-track"><i style="width:${width}%"></i></div>
-      <strong>${value}</strong>
-    </div>
-  `;
-}
-
-function renderTagList(items) {
-  return (items || []).length
-    ? items.map((item) => `<span class="token">${escapeHtml(item)}</span>`).join("")
-    : '<span class="token is-muted">无问题标签</span>';
+  const supervisorOptions = getSupervisorOptionsForUser(user);
+  return renderManagementUserItemMarkup(user, canManageUsers, regions, supervisorOptions);
 }
 
 function getSelectedProject() {
@@ -4263,6 +4857,9 @@ function setBusy(isBusy) {
   elements.submitButton.disabled = isBusy;
   elements.noteInput.disabled = isBusy;
   elements.projectSelect.disabled = isBusy || !getVisibleProjects().length;
+  if (elements.departmentInput) {
+    elements.departmentInput.disabled = isBusy || !getVisibleProjects().length;
+  }
   if (elements.projectSearchInput) {
     elements.projectSearchInput.disabled = isBusy;
   }
@@ -4280,6 +4877,9 @@ function setBusy(isBusy) {
   }
   if (elements.newHospitalNameInput) {
     elements.newHospitalNameInput.disabled = isBusy;
+  }
+  if (elements.newProjectDepartmentInput) {
+    elements.newProjectDepartmentInput.disabled = isBusy;
   }
   if (elements.newHospitalCityInput) {
     elements.newHospitalCityInput.disabled = isBusy;
@@ -4317,6 +4917,8 @@ function setBusy(isBusy) {
   renderFollowupDialog();
   renderSupplementDialog();
   renderHistoryInfoDialog();
+  renderTaskDueDialog();
+  renderTaskRecordDialog();
   renderIntakeSubmitButton();
   renderAuthState();
 }
@@ -4329,6 +4931,258 @@ function resolveUpdateHospitalName(update) {
   const projectId = String(update?.projectId || "").trim();
   const project = state.bootstrap?.projects?.find((item) => item.id === projectId) || null;
   return project?.hospital?.name || "未关联医";
+}
+
+function buildTaskBoardProjectLabel(project) {
+  if (!project) {
+    return "";
+  }
+  const hospitalName = String(project?.hospital?.name || "").trim();
+  const departmentName = String(project?.departmentName || "").trim();
+  if (hospitalName && departmentName) {
+    return `${hospitalName}-${departmentName}`;
+  }
+  return hospitalName || departmentName || String(project?.id || "").trim();
+}
+
+function getTaskBoardProjectOptions() {
+  const tasks = Array.isArray(state.bootstrap?.tasks) ? state.bootstrap.tasks : [];
+  const counts = new Map();
+  for (const task of tasks) {
+    const projectId = String(task?.projectId || "").trim();
+    if (!projectId) {
+      continue;
+    }
+    counts.set(projectId, (counts.get(projectId) || 0) + 1);
+  }
+
+  return (Array.isArray(state.bootstrap?.projects) ? state.bootstrap.projects : [])
+    .filter((project) => counts.has(String(project?.id || "").trim()))
+    .map((project) => ({
+      id: String(project.id || "").trim(),
+      label: buildTaskBoardProjectLabel(project),
+      hospitalName: String(project?.hospital?.name || "").trim(),
+      city: String(project?.hospital?.city || "").trim(),
+      departmentName: String(project?.departmentName || "").trim(),
+      taskCount: Number(counts.get(String(project.id || "").trim()) || 0),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+}
+
+function getVisibleTaskBoardProjectOptions() {
+  const options = getTaskBoardProjectOptions();
+  const keyword = String(state.taskBoard.projectKeyword || "").trim().toLowerCase();
+  if (!keyword) {
+    return options;
+  }
+  return options.filter((option) => {
+    const haystack = `${option.label} ${option.hospitalName} ${option.city} ${option.departmentName}`.toLowerCase();
+    return haystack.includes(keyword);
+  });
+}
+
+function resolveTaskBoardGroup(task) {
+  const status = String(task?.effectiveStatus || task?.status || "").trim();
+  if (status === "completed") {
+    return "completed";
+  }
+  if (status === "overdue") {
+    return "overdue";
+  }
+  return "todo";
+}
+
+function compareTaskBoardDates(leftValue, rightValue, direction = "asc") {
+  const leftTime = leftValue ? new Date(leftValue).getTime() : Number.NaN;
+  const rightTime = rightValue ? new Date(rightValue).getTime() : Number.NaN;
+  const safeLeft = Number.isFinite(leftTime) ? leftTime : 0;
+  const safeRight = Number.isFinite(rightTime) ? rightTime : 0;
+  return direction === "desc" ? safeRight - safeLeft : safeLeft - safeRight;
+}
+
+function compareTaskBoardText(leftValue, rightValue) {
+  return String(leftValue || "").localeCompare(String(rightValue || ""), "zh-CN");
+}
+
+function sortTaskBoardTasks(tasks) {
+  const safeTasks = Array.isArray(tasks) ? [...tasks] : [];
+  const sortField = state.taskBoard.sortField === "startAt" ? "startAt" : "dueAt";
+  const sortDirection = state.taskBoard.sortDirection === "desc" ? "desc" : "asc";
+
+  return safeTasks.sort((left, right) => {
+    if (sortField === "dueAt") {
+      const leftHasDueAt = Boolean(left?.dueAt);
+      const rightHasDueAt = Boolean(right?.dueAt);
+      if (leftHasDueAt !== rightHasDueAt) {
+        return leftHasDueAt ? -1 : 1;
+      }
+      if (leftHasDueAt && rightHasDueAt) {
+        const dueDelta = compareTaskBoardDates(left.dueAt, right.dueAt, sortDirection);
+        if (dueDelta) {
+          return dueDelta;
+        }
+      }
+    } else {
+      const startDelta = compareTaskBoardDates(left?.startAt, right?.startAt, sortDirection);
+      if (startDelta) {
+        return startDelta;
+      }
+    }
+
+    const fallbackTimeDelta = compareTaskBoardDates(left?.startAt, right?.startAt, sortDirection);
+    if (fallbackTimeDelta) {
+      return fallbackTimeDelta;
+    }
+
+    const titleDelta = compareTaskBoardText(left?.title, right?.title);
+    if (titleDelta) {
+      return titleDelta;
+    }
+
+    return compareTaskBoardText(left?.id, right?.id);
+  });
+}
+
+function getTaskBoardFilteredTasks() {
+  const projectFilterId = String(state.taskBoard.projectFilterId || "").trim();
+  const tasks = Array.isArray(state.bootstrap?.tasks) ? state.bootstrap.tasks : [];
+  return projectFilterId ? tasks.filter((task) => String(task?.projectId || "").trim() === projectFilterId) : tasks;
+}
+
+function resolveDefaultTaskBoardGroup(tasks) {
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  const groups = ["overdue", "todo", "completed"];
+  for (const groupId of groups) {
+    if (safeTasks.some((task) => resolveTaskBoardGroup(task) === groupId)) {
+      return groupId;
+    }
+  }
+  return "todo";
+}
+
+function ensureTaskBoardState() {
+  const options = getTaskBoardProjectOptions();
+  const filterId = String(state.taskBoard.projectFilterId || "").trim();
+  if (filterId && !options.some((option) => option.id === filterId)) {
+    state.taskBoard.projectFilterId = "";
+  }
+
+  const filteredTasks = getTaskBoardFilteredTasks();
+  const currentGroup = String(state.taskBoard.activeGroup || "todo").trim();
+  const allowedGroups = new Set(["overdue", "todo", "completed"]);
+  const nextGroup = allowedGroups.has(currentGroup) ? currentGroup : "todo";
+  if (!filteredTasks.some((task) => resolveTaskBoardGroup(task) === nextGroup)) {
+    state.taskBoard.activeGroup = resolveDefaultTaskBoardGroup(filteredTasks);
+  } else {
+    state.taskBoard.activeGroup = nextGroup;
+  }
+}
+
+function parseTaskBoardDateValue(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return null;
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfTaskBoardDay(date) {
+  const parsed = parseTaskBoardDateValue(date);
+  if (!parsed) {
+    return null;
+  }
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
+}
+
+function getTaskBoardReferenceDate() {
+  const businessDate = String(state.bootstrap?.health?.simulation?.currentDate || "").trim();
+  if (businessDate) {
+    return new Date(`${businessDate}T12:00:00`);
+  }
+  const now = new Date();
+  now.setHours(12, 0, 0, 0);
+  return now;
+}
+
+function getTaskBoardDayDelta(targetDate, baseDate) {
+  const target = startOfTaskBoardDay(targetDate);
+  const base = startOfTaskBoardDay(baseDate);
+  if (!target || !base) {
+    return null;
+  }
+  return Math.round((target.getTime() - base.getTime()) / 86400000);
+}
+
+function formatTaskBoardSignedDayLabel(delta) {
+  if (delta === null || delta === undefined || Number.isNaN(Number(delta))) {
+    return "";
+  }
+  if (delta > 0) {
+    return `+${delta}天`;
+  }
+  if (delta < 0) {
+    return `${delta}天`;
+  }
+  return "0天";
+}
+
+function buildTaskDueAdjustmentLabel(task) {
+  const initialDueAt = String(task?.initialDueAt || "").trim();
+  const currentDueAt = String(task?.dueAt || "").trim();
+  if (!initialDueAt || !currentDueAt || initialDueAt === currentDueAt) {
+    return "";
+  }
+  const delta = getTaskBoardDayDelta(currentDueAt, initialDueAt);
+  if (delta === null || delta === 0) {
+    return "";
+  }
+  return delta > 0 ? `已延期 ${formatTaskBoardSignedDayLabel(delta)}` : `已提前 ${formatTaskBoardSignedDayLabel(delta)}`;
+}
+
+function buildTaskTimeStatusLabel(task) {
+  const dueAt = String(task?.dueAt || "").trim();
+  if (!dueAt) {
+    return task?.status === "completed" ? "已完成" : "无截止日";
+  }
+
+  if (task?.status === "completed" && task?.completedAt) {
+    const completedDelta = getTaskBoardDayDelta(dueAt, task.completedAt);
+    if (completedDelta === null) {
+      return "已完成";
+    }
+    return formatTaskBoardSignedDayLabel(completedDelta);
+  }
+
+  const remainingDelta = getTaskBoardDayDelta(dueAt, getTaskBoardReferenceDate());
+  if (remainingDelta === null) {
+    return "无截止日";
+  }
+  if (remainingDelta > 0) {
+    return `剩余 ${remainingDelta} 天`;
+  }
+  if (remainingDelta < 0) {
+    return `逾期 ${Math.abs(remainingDelta)} 天`;
+  }
+  return "今天截止";
+}
+
+function decorateTaskBoardTask(task) {
+  const project =
+    (Array.isArray(state.bootstrap?.projects) ? state.bootstrap.projects : []).find(
+      (item) => String(item?.id || "").trim() === String(task?.projectId || "").trim(),
+    ) || null;
+
+  return {
+    ...task,
+    projectLabel: buildTaskBoardProjectLabel(project) || String(task?.hospitalName || "").trim(),
+    startDateLabel: formatDate(task?.startAt || task?.createdAt),
+    initialDueDateLabel: task?.initialDueAt ? formatDate(task.initialDueAt) : "未设置",
+    currentDueDateLabel: task?.dueAt ? formatDate(task.dueAt) : "未设置",
+    dueAdjustmentLabel: buildTaskDueAdjustmentLabel(task),
+    timeStatusLabel: buildTaskTimeStatusLabel(task),
+    hasRecords: Number(task?.recordCount || 0) > 0,
+  };
 }
 
 function openProjectLedgerDetail(projectId) {
@@ -4351,8 +5205,34 @@ function openProjectLedgerDetail(projectId) {
   renderAll();
 }
 
+function openTaskCenter(projectId = "", options = {}) {
+  const normalizedProjectId = String(projectId || "").trim();
+  const requestedGroupId = String(options?.groupId || "").trim();
+  const visibleProjectIds = new Set(getTaskBoardProjectOptions().map((option) => option.id));
+  state.activeTab = "tasks";
+  if (normalizedProjectId && visibleProjectIds.has(normalizedProjectId)) {
+    state.selectedProjectId = normalizedProjectId;
+    state.taskBoard.projectFilterId = normalizedProjectId;
+  } else {
+    state.taskBoard.projectFilterId = "";
+  }
+  state.taskBoard.projectKeyword = "";
+  state.taskBoard.projectSearchOpen = false;
+  const filteredTasks = getTaskBoardFilteredTasks();
+  const availableGroups = new Set(filteredTasks.map((task) => resolveTaskBoardGroup(task)));
+  state.taskBoard.activeGroup =
+    requestedGroupId && availableGroups.has(requestedGroupId)
+      ? requestedGroupId
+      : resolveDefaultTaskBoardGroup(filteredTasks);
+  persistSelection();
+  persistActiveTab();
+  renderAll();
+}
+
 function persistSelection() {
-  localStorage.setItem(STORAGE_KEY, state.selectedProjectId || "");
+  const value = state.selectedProjectId || "";
+  localStorage.setItem(STORAGE_KEY, value);
+  localStorage.setItem(getScopedProjectSelectionKey(), value);
 }
 
 function persistActiveTab() {
@@ -4370,14 +5250,15 @@ function persistLedgerSubTab() {
 function renderSessionBar() {
   const currentUser = state.bootstrap?.currentUser || null;
   if (!currentUser || !state.authToken) {
-    elements.sessionUserName.textContent = "未登";
-    elements.sessionUserRole.textContent = "请先登录后继续使";
+    elements.sessionUserName.textContent = "未登录";
+    elements.sessionUserRole.textContent = "请先登录后继续使用";
     elements.logoutButton.disabled = true;
     return;
   }
-  elements.sessionUserName.textContent = currentUser.name || "未命名用";
-  const roleText = currentUser.roleName || currentUser.role || "--";
-  elements.sessionUserRole.textContent = `${roleText} · ${currentUser.regionName || "--"}`;
+  elements.sessionUserName.textContent = normalizeDisplayText(currentUser.name || "未命名用户");
+  const roleText = normalizeDisplayText(currentUser.roleName || currentUser.role || "--");
+  const regionText = normalizeDisplayText(currentUser.regionName || "--");
+  elements.sessionUserRole.textContent = `${roleText} · ${regionText}`;
   elements.logoutButton.disabled = state.busy || state.auth.busy;
 }
 
@@ -4390,6 +5271,67 @@ function getAvailableRegions() {
     return state.authOptions.regions;
   }
   return [];
+}
+
+function getManagementLookupUsers() {
+  return Array.isArray(state.bootstrap?.lookups?.users) ? state.bootstrap.lookups.users : [];
+}
+
+function getSupervisorOptionsForUser(user, overrideRegionId = user?.regionId) {
+  const normalizedRegionId = String(overrideRegionId || "").trim();
+  return getManagementLookupUsers()
+    .filter(
+      (candidate) =>
+        normalizeUserRole(candidate?.role) === "supervisor" && String(candidate?.regionId || "").trim() === normalizedRegionId,
+    )
+    .sort((left, right) => String(left?.name || "").localeCompare(String(right?.name || ""), "zh-CN"))
+    .map((candidate) => ({
+      id: String(candidate?.id || "").trim(),
+      name: String(candidate?.name || "").trim(),
+    }))
+    .filter((candidate) => candidate.id);
+}
+
+function buildManagementSupervisorOptionMarkup(options, selectedSupervisorUserId = "") {
+  const normalizedSelectedSupervisorUserId = String(selectedSupervisorUserId || "").trim();
+  const safeOptions = Array.isArray(options) ? options : [];
+  const rows = [
+    `<option value="">未分配主管</option>`,
+    ...safeOptions.map((item) => {
+      const supervisorUserId = escapeHtml(String(item.id || ""));
+      const selected = String(item.id || "").trim() === normalizedSelectedSupervisorUserId ? " selected" : "";
+      return `<option value="${supervisorUserId}"${selected}>${escapeDisplayHtml(item.name || item.id || "--")}</option>`;
+    }),
+  ];
+  return rows.join("");
+}
+
+function syncManagementSupervisorSelect(userId) {
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) {
+    return;
+  }
+
+  const regionSelect = elements.insightPanel.querySelector(
+    `select[data-management-region-select="${escapeSelectorValue(normalizedUserId)}"]`,
+  );
+  const supervisorSelect = elements.insightPanel.querySelector(
+    `select[data-management-supervisor-select="${escapeSelectorValue(normalizedUserId)}"]`,
+  );
+  if (!regionSelect || !supervisorSelect) {
+    return;
+  }
+
+  const visibleUsers = Array.isArray(state.bootstrap?.management?.visibleUsers) ? state.bootstrap.management.visibleUsers : [];
+  const user =
+    visibleUsers.find((item) => String(item?.id || "").trim() === normalizedUserId) ||
+    getManagementLookupUsers().find((item) => String(item?.id || "").trim() === normalizedUserId) ||
+    null;
+  const regionId = String(regionSelect.value || "").trim();
+  const options = getSupervisorOptionsForUser(user, regionId);
+  const previousValue = String(supervisorSelect.value || user?.supervisorUserId || "").trim();
+  const nextValue = options.some((item) => item.id === previousValue) ? previousValue : "";
+  supervisorSelect.innerHTML = buildManagementSupervisorOptionMarkup(options, nextValue);
 }
 
 function renderAuthRegionOptions() {
@@ -4407,7 +5349,7 @@ function renderAuthRegionOptions() {
   elements.authRegisterRegionSelect.innerHTML = regions
     .map(
       (region) =>
-        `<option value="${escapeHtml(region.id || "")}">${escapeHtml(region.name || region.id || "--")}</option>`,
+        `<option value="${escapeHtml(region.id || "")}">${escapeDisplayHtml(region.name || region.id || "--")}</option>`,
     )
     .join("");
 
@@ -4448,7 +5390,7 @@ function renderAuthState() {
       elements.authFeedback.className = "auth-feedback";
     } else {
       elements.authFeedback.hidden = false;
-      elements.authFeedback.textContent = message;
+      elements.authFeedback.textContent = normalizeDisplayText(message);
       const tone = String(state.auth.feedback?.tone || "");
       elements.authFeedback.className = "auth-feedback";
       if (tone) {
@@ -4528,7 +5470,7 @@ async function submitLogin() {
     }
     state.authToken = payload.token || "";
     localStorage.setItem(AUTH_TOKEN_KEY, state.authToken);
-    state.bootstrap = payload.bootstrap || null;
+    applyBootstrapPayload(payload.bootstrap || null, { restoreSelection: true });
     ensureSelection();
     renderAll();
     elements.authLoginPasswordInput.value = "";
@@ -4577,7 +5519,7 @@ async function submitRegister() {
     }
     state.authToken = payload.token || "";
     localStorage.setItem(AUTH_TOKEN_KEY, state.authToken);
-    state.bootstrap = payload.bootstrap || null;
+    applyBootstrapPayload(payload.bootstrap || null, { restoreSelection: true });
     ensureSelection();
     renderAll();
     elements.authRegisterPasswordInput.value = "";
@@ -4617,13 +5559,17 @@ async function logout() {
 function handleUnauthorized(message = "登录已失效，请重新登录") {
   state.authToken = "";
   localStorage.removeItem(AUTH_TOKEN_KEY);
-  state.bootstrap = null;
+  applyBootstrapPayload(null);
   state.lastResult = null;
   state.intakePreviewFingerprint = "";
+  state.intakePreviewStaleReason = "";
+  clearDepartmentInput({ clearSuggestions: true, resetProjectBinding: true });
   clearSupplementContext();
   resetContactEditorState({ silent: true });
   resetFollowupState();
   resetHistoryInfoState();
+  closeTaskDueDialog();
+  closeTaskRecordDialog();
   resetBackupState();
   renderSessionBar();
   setAuthFeedback(message, "warn");
@@ -4637,7 +5583,7 @@ function showToast(message, tone = "ready") {
 
   clearTimeout(showToast.timer);
   elements.toast.hidden = false;
-  elements.toast.textContent = message;
+  elements.toast.textContent = normalizeDisplayText(message);
   elements.toast.className = "toast";
   elements.toast.classList.add(`is-${tone}`);
 
@@ -4650,42 +5596,6 @@ function showToast(message, tone = "ready") {
   }, 2200);
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "--";
-  }
-  return new Date(value).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
-}
-
-function formatDateTime(value) {
-  if (!value) {
-    return "--";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "--";
-  }
-  return parsed.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function formatRemarkRatio(repliedCount, totalCount) {
-  const replied = Number.isFinite(Number(repliedCount)) ? Math.max(0, Number(repliedCount)) : 0;
-  const total = Number.isFinite(Number(totalCount)) ? Math.max(0, Number(totalCount)) : 0;
-  const left = String(Math.min(replied, total)).padStart(2, "0");
-  const right = String(total).padStart(2, "0");
-  return `${left}/${right}`;
-}
-
-function escapeSelectorValue(value) {
-  return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
-
 function resolveVisitDate() {
   const preset = elements.visitDatePreset?.value || "today";
   const offsetDays = VISIT_DATE_OFFSETS[preset] ?? 0;
@@ -4693,10 +5603,6 @@ function resolveVisitDate() {
   base.setHours(12, 0, 0, 0);
   base.setDate(base.getDate() - offsetDays);
   return formatDateInput(base);
-}
-
-function formatDateInput(date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function applyVisitDatePresetFromDate(dateOnly) {
@@ -4722,15 +5628,6 @@ function applyVisitDatePresetFromDate(dateOnly) {
   } else {
     elements.visitDatePreset.value = "today";
   }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 

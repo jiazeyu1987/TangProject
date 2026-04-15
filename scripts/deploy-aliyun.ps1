@@ -6,6 +6,8 @@ param(
   [int]$ServicePort = 3000,
   [string]$RemoteDir = "/root/apps/tangproject",
   [string]$DeployEnvFile = ".env.deploy",
+  [ValidateSet("code-sync", "rebuild")]
+  [string]$DeployMode = "code-sync",
   [switch]$PromptForPassword,
   [string]$PasswordEnvVar = "ALIYUN_SSH_PASSWORD"
 )
@@ -32,6 +34,16 @@ function Assert-FileExists {
   )
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     throw "Missing required file for deployment: $Label ($Path)."
+  }
+}
+
+function Assert-DirectoryExists {
+  param(
+    [string]$Path,
+    [string]$Label
+  )
+  if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+    throw "Missing required directory for deployment: $Label ($Path)."
   }
 }
 
@@ -176,27 +188,43 @@ try {
   Require-Command -Name "npm"
 
   $requiredRootFiles = @(
+    "docker-compose.yml",
+    "server.js"
+  )
+  $requiredRebuildOnlyFiles = @(
     ".dockerignore",
     "Dockerfile",
-    "docker-compose.yml",
     "package.json",
-    "package-lock.json",
-    "server.js",
-    "README.md"
+    "package-lock.json"
   )
   $requiredPublicFiles = @(
     "public/index.html",
     "public/app.js",
     "public/styles.css"
   )
-  $requiredDataFiles = @(
+  $requiredRuntimeDirectories = @(
+    "server",
+    "public"
+  )
+  $requiredStaticDataFiles = @(
     "data/intake-schema.json",
     "data/followup-questions-schema.json",
     "data/seed-store.json"
   )
+  $preservedRemoteDataFiles = @(
+    "data/store.json"
+  )
 
-  foreach ($file in ($requiredRootFiles + $requiredPublicFiles + $requiredDataFiles)) {
+  $requiredFiles = $requiredRootFiles + $requiredPublicFiles + $requiredStaticDataFiles
+  if ($DeployMode -eq "rebuild") {
+    $requiredFiles += $requiredRebuildOnlyFiles
+  }
+
+  foreach ($file in $requiredFiles) {
     Assert-FileExists -Path $file -Label $file
+  }
+  foreach ($directory in $requiredRuntimeDirectories) {
+    Assert-DirectoryExists -Path $directory -Label $directory
   }
 
   Assert-FileExists -Path $DeployEnvFile -Label "Deploy env file"
@@ -215,6 +243,7 @@ try {
 
   Write-Step "Running local static checks"
   Invoke-External -Command "npm" -Arguments @("run", "check") -Context "Local syntax check"
+  Write-Step ("Selected deploy mode: {0}" -f $DeployMode)
 
   $remote = "$ServerUser@$ServerHost"
   $remoteDirEscaped = Escape-SingleQuotesForPosix -Value $RemoteDir
@@ -227,21 +256,33 @@ try {
     Require-Command -Name "scp"
 
     Write-Step "Checking remote prerequisites and preparing directories"
-    $remotePrep = "set -euo pipefail; command -v docker >/dev/null 2>&1 || { echo 'ERROR: docker is required on remote host.' >&2; exit 31; }; docker compose version >/dev/null 2>&1 || { echo 'ERROR: docker compose plugin is required on remote host.' >&2; exit 32; }; command -v curl >/dev/null 2>&1 || { echo 'ERROR: curl is required on remote host.' >&2; exit 33; }; mkdir -p $remoteDirQuoted/public $remoteDirQuoted/data"
+    $remotePrep = "set -euo pipefail; command -v docker >/dev/null 2>&1 || { echo 'ERROR: docker is required on remote host.' >&2; exit 31; }; docker compose version >/dev/null 2>&1 || { echo 'ERROR: docker compose plugin is required on remote host.' >&2; exit 32; }; command -v curl >/dev/null 2>&1 || { echo 'ERROR: curl is required on remote host.' >&2; exit 33; }; rm -rf $remoteDirQuoted/server $remoteDirQuoted/public; mkdir -p $remoteDirQuoted/server $remoteDirQuoted/public $remoteDirQuoted/data"
     Invoke-External -Command "ssh" -Arguments @("-p", $SshPort.ToString(), $remote, $remotePrep) -Context "Remote prerequisite check"
 
     Write-Step "Uploading project files"
     $rootUploadSources = $requiredRootFiles | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
-    $publicUploadSources = $requiredPublicFiles | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
-    $dataUploadSources = $requiredDataFiles | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
+    $rebuildUploadSources = $requiredRebuildOnlyFiles | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
+    $serverUploadSource = (Resolve-Path -LiteralPath "server").Path
+    $publicUploadSource = (Resolve-Path -LiteralPath "public").Path
+    $dataUploadSources = $requiredStaticDataFiles | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }
 
     Invoke-External -Command "scp" -Arguments (@("-P", $SshPort.ToString()) + $rootUploadSources + @("${remote}:$RemoteDir/")) -Context "Root file upload"
-    Invoke-External -Command "scp" -Arguments (@("-P", $SshPort.ToString()) + $publicUploadSources + @("${remote}:$RemoteDir/public/")) -Context "Public file upload"
+    if ($DeployMode -eq "rebuild") {
+      Invoke-External -Command "scp" -Arguments (@("-P", $SshPort.ToString()) + $rebuildUploadSources + @("${remote}:$RemoteDir/")) -Context "Rebuild file upload"
+    }
+    Invoke-External -Command "scp" -Arguments @("-r", "-P", $SshPort.ToString(), $serverUploadSource, "${remote}:$RemoteDir/") -Context "Server directory upload"
+    Invoke-External -Command "scp" -Arguments @("-r", "-P", $SshPort.ToString(), $publicUploadSource, "${remote}:$RemoteDir/") -Context "Public directory upload"
     Invoke-External -Command "scp" -Arguments (@("-P", $SshPort.ToString()) + $dataUploadSources + @("${remote}:$RemoteDir/data/")) -Context "Data file upload"
     Invoke-External -Command "scp" -Arguments @("-P", $SshPort.ToString(), $deployEnvPath, "${remote}:$RemoteDir/.env.deploy") -Context "Deploy env upload"
+    Write-Step ("Preserving remote runtime data: {0}" -f ($preservedRemoteDataFiles -join ", "))
 
-    Write-Step "Rebuilding and restarting remote container"
-    $remoteDeploy = "set -euo pipefail; cd $remoteDirQuoted; cp .env.deploy .env.example; docker compose build --no-cache tang-project; docker compose up -d --force-recreate tang-project; docker compose ps tang-project"
+    if ($DeployMode -eq "rebuild") {
+      Write-Step "Rebuilding and restarting remote container"
+      $remoteDeploy = "set -euo pipefail; cd $remoteDirQuoted; cp .env.deploy .env.example; docker compose build --no-cache tang-project; docker compose up -d --force-recreate tang-project; docker compose ps tang-project"
+    } else {
+      Write-Step "Syncing code into existing image and recreating container without rebuild"
+      $remoteDeploy = "set -euo pipefail; cd $remoteDirQuoted; cp .env.deploy .env.example; docker image inspect local/tang-project:latest >/dev/null 2>&1 || { echo 'ERROR: local/tang-project:latest is missing on remote host. Use -DeployMode rebuild.' >&2; exit 41; }; docker compose up -d --force-recreate --no-build tang-project; docker exec tang-project sh -lc 'rm -rf /app/server /app/public && mkdir -p /app/server /app/public'; docker cp $remoteDirQuoted/server.js tang-project:/app/server.js; docker cp $remoteDirQuoted/server/. tang-project:/app/server/; docker cp $remoteDirQuoted/public/. tang-project:/app/public/; docker restart tang-project; docker compose ps tang-project"
+    }
     Invoke-External -Command "ssh" -Arguments @("-p", $SshPort.ToString(), $remote, $remoteDeploy) -Context "Remote deploy"
 
     Write-Step "Validating remote health from server side"
@@ -273,11 +314,13 @@ try {
         "--server-user", $ServerUser,
         "--remote-dir", $RemoteDir,
         "--service-port", $ServicePort.ToString(),
+        "--deploy-mode", $DeployMode,
         "--password-env-var", $PasswordEnvVar
       ) -Context "Remote deploy via Paramiko"
     } finally {
       [Environment]::SetEnvironmentVariable($PasswordEnvVar, $previousPassword, "Process")
     }
+    Write-Step ("Preserving remote runtime data: {0}" -f ($preservedRemoteDataFiles -join ", "))
     $internalHealthConfigured = $true
   }
 

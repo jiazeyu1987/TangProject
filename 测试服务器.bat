@@ -20,6 +20,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" ^
   -ServerUser "%SERVER_USER%" ^
   -RemoteDir "%REMOTE_DIR%" ^
   -ServicePort %SERVICE_PORT% ^
+  -DeployMode code-sync ^
   %*
 set "EXIT_CODE=%ERRORLEVEL%"
 

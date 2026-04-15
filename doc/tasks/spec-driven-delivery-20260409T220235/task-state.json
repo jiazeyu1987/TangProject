@@ -2,19 +2,173 @@
   "schema_version": 2,
   "task_id": "spec-driven-delivery-20260409T220235",
   "mode": "full",
-  "status": "planning",
+  "status": "completed",
   "current_phase": null,
-  "phase_statuses": [],
-  "planner_review_status": "pending",
-  "test_status": "not_started",
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "Reply mode entry surface",
+      "status": "completed",
+      "objective": "Make the reply action visibly switch the entry page into a dedicated reply mode with the target remark shown on screen.",
+      "owned_paths": [
+        "`public/index.html`",
+        "`public/app.js`",
+        "`public/styles.css`"
+      ],
+      "dependencies": [
+        "existing remark rows",
+        "remark selection state",
+        "and authenticated access to a project detail view"
+      ],
+      "deliverables": [
+        "reply-specific header/copy",
+        "visible source-remark block",
+        "reply-oriented labels/placeholders",
+        "and focus behavior that lands in the reply field"
+      ],
+      "evidence_expectation": "a real-browser screenshot and Playwright trace showing the transition into reply mode from the remark row.",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "Clicking a timeline `回复/回答` action switches the entry page into a reply-specific mode with a visible source-remark block and a reply-oriented page header/copy.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1-Enter-reply-mode-from-a-timeline-remark",
+            "test-report.md#T2-Submit-the-reply-and-persist-linkage",
+            "test-report.md#T3-Verify-timeline-history-and-non-reply-regression"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "In reply mode, the date and note controls use reply-oriented labels or placeholders, and the screen no longer reads like a generic supplement draft.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1-Enter-reply-mode-from-a-timeline-remark",
+            "test-report.md#T2-Submit-the-reply-and-persist-linkage",
+            "test-report.md#T3-Verify-timeline-history-and-non-reply-regression"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-09T22:24:43"
+    },
+    {
+      "phase_id": "P2",
+      "title": "Reply submission and linkage",
+      "status": "completed",
+      "objective": "Preserve the source remark association and submit the reply content through the existing reply endpoint before the intake record is stored.",
+      "owned_paths": [
+        "`public/app.js`",
+        "`server.js`",
+        "`data/store.json`"
+      ],
+      "dependencies": [
+        "existing `POST /api/project-remarks/:remarkId/reply` behavior and the current intake submit path"
+      ],
+      "deliverables": [
+        "submit sequencing",
+        "payload mapping",
+        "post-submit state reset",
+        "and no stale reply context after save"
+      ],
+      "evidence_expectation": "network evidence or trace showing the reply request followed by the intake submit, plus the resulting persisted history visible in the app.",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "Submitting from reply mode posts the reply content through the existing remark-reply flow before the intake record is saved.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "execution-log.md#Phase-P2-Concurrency-Limit",
+            "test-report.md#T1-Enter-reply-mode-from-a-timeline-remark",
+            "test-report.md#T2-Submit-the-reply-and-persist-linkage",
+            "test-report.md#T3-Verify-timeline-history-and-non-reply-regression"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "The saved record preserves the target remark linkage and the entered reply text, and the UI returns to a clean post-submit state without stale reply context.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "execution-log.md#Phase-P2-Concurrency-Limit",
+            "test-report.md#T1-Enter-reply-mode-from-a-timeline-remark",
+            "test-report.md#T2-Submit-the-reply-and-persist-linkage",
+            "test-report.md#T3-Verify-timeline-history-and-non-reply-regression"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2",
+        "execution-log.md#Phase-P2-Concurrency-Limit"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-09T23:14:39"
+    },
+    {
+      "phase_id": "P3",
+      "title": "Timeline history and regression guard",
+      "status": "completed",
+      "objective": "Make the detail timeline clearly expose reply/read history while keeping the standard intake flow intact.",
+      "owned_paths": [
+        "`public/app.js`",
+        "`public/styles.css`"
+      ],
+      "dependencies": [
+        "the existing detail timeline data and the reply/read APIs already present in the app"
+      ],
+      "deliverables": [
+        "readable reply/read history rows",
+        "clear action affordances",
+        "and verified regression coverage for the non-reply entry path"
+      ],
+      "evidence_expectation": "a real-browser screenshot or trace of the updated timeline and a successful `npm run check` result.",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "The detail timeline makes reply and read history legible, with the source remark, reply action, and read state visible in the row or expansion that matches the screenshot intent.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1-Enter-reply-mode-from-a-timeline-remark",
+            "test-report.md#T2-Submit-the-reply-and-persist-linkage",
+            "test-report.md#T3-Verify-timeline-history-and-non-reply-regression"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "The standard non-reply intake path still works and `npm run check` remains clean after the reply-flow changes.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1-Enter-reply-mode-from-a-timeline-remark",
+            "test-report.md#T2-Submit-the-reply-and-persist-linkage",
+            "test-report.md#T3-Verify-timeline-history-and-non-reply-regression"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-09T22:30:56"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
   "blocking_prereqs": [],
   "iteration_counts": {
-    "planner_revisions": 0,
-    "executor_loops": 0,
-    "test_loops": 0
+    "planner_revisions": 2,
+    "executor_loops": 4,
+    "test_loops": 2
   },
   "created_at": "2026-04-09T22:02:35",
-  "updated_at": "2026-04-09T22:02:35",
+  "updated_at": "2026-04-09T23:15:08",
   "branch": "main",
   "baseline_revision": "a5cafc87e2af873f5ab35244f803523e18c5d62f",
   "workspace_root": "D:\\ProjectPackage\\TangProject",

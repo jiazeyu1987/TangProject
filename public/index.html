@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/styles.css?v=20260409-8" />
+    <link rel="stylesheet" href="/styles.css?v=20260415-2" />
   </head>
   <body>
     <div id="appShell" class="app-shell">
@@ -30,7 +30,7 @@
                 <p id="entryEyebrow" class="section-eyebrow">录入</p>
                 <h2 id="entryTitle">纪要录入</h2>
               </div>
-              <p id="entryCopy" class="section-copy">录入一线医院推进纪要，系统自动提取科室、联系人、问题标签、阶段变化与任务建议。</p>
+              <p id="entryCopy" class="section-copy">录入一线医院推进纪要，系统自动提取联系人、问题标签、阶段变化与任务建议。</p>
             </div>
 
             <form id="intakeForm" class="intake-form">
@@ -71,6 +71,11 @@
                     <option value="day_before_yesterday">前天</option>
                   </select>
                 </label>
+                <label class="department-field">
+                  <span>科室</span>
+                  <input id="departmentInput" type="text" list="departmentSuggestions" placeholder="无科室" autocomplete="off" />
+                  <datalist id="departmentSuggestions"></datalist>
+                </label>
               </div>
 
               <label>
@@ -78,7 +83,7 @@
                 <textarea
                   id="noteInput"
                   rows="7"
-                  placeholder="请描述本次医院推进情况，例如：拜访科室、关键接触人、反馈意见、阻塞点、下一步计划及是否需要管理支持。"
+                  placeholder="请描述本次医院推进情况，例如：关键接触人、反馈意见、阻塞点、下一步计划及是否需要管理支持。"
                   required
                 ></textarea>
               </label>
@@ -154,7 +159,7 @@
                 <p class="section-eyebrow">任务</p>
                 <h2>任务中心</h2>
               </div>
-              <p class="section-copy">集中处理导入项目相关待办，支持直接更新任务状态，验证任务闭环。</p>
+              <p class="section-copy">集中处理项目任务，可直接改状态、设截止、补记录。</p>
             </div>
             <div id="taskBoard" class="task-board"></div>
           </article>
@@ -195,6 +200,11 @@
           <label>
             <span>医院名称</span>
             <input id="newHospitalNameInput" type="text" maxlength="120" required />
+          </label>
+          <label>
+            <span>科室</span>
+            <input id="newProjectDepartmentInput" type="text" maxlength="80" list="newProjectDepartmentSuggestions" placeholder="无科室" autocomplete="off" />
+            <datalist id="newProjectDepartmentSuggestions"></datalist>
           </label>
           <label>
             <span>城市</span>
@@ -255,6 +265,48 @@
           <button id="historyInfoDialogRefreshButton" class="chip" type="button">刷新历史信息</button>
         </div>
         <div id="historyInfoDialogList" class="history-info-list"></div>
+      </div>
+    </div>
+
+    <div id="taskDueDialog" class="modal-backdrop" hidden>
+      <div class="modal-card modal-card-task-due" role="dialog" aria-modal="true" aria-labelledby="taskDueDialogTitle">
+        <div class="modal-head">
+          <h3 id="taskDueDialogTitle">截止日</h3>
+          <button id="taskDueDialogCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
+        </div>
+        <p id="taskDueDialogCopy" class="modal-copy">设置或调整截止日，系统会保留变更记录。</p>
+        <form id="taskDueDialogForm" class="modal-form">
+          <div id="taskDueDialogMeta" class="task-dialog-meta"></div>
+          <label>
+            <span>截止日期</span>
+            <input id="taskDueDialogDateInput" type="date" required />
+          </label>
+          <div class="modal-actions">
+            <button id="taskDueDialogCancelButton" class="chip" type="button">取消</button>
+            <button id="taskDueDialogSubmitButton" class="primary-button" type="submit">保存截止日</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="taskRecordDialog" class="modal-backdrop" hidden>
+      <div class="modal-card modal-card-task-record" role="dialog" aria-modal="true" aria-labelledby="taskRecordDialogTitle">
+        <div class="modal-head">
+          <h3 id="taskRecordDialogTitle">处理记录</h3>
+          <button id="taskRecordDialogCloseButton" class="chip chip-icon" type="button" title="关闭">×</button>
+        </div>
+        <p id="taskRecordDialogCopy" class="modal-copy">记录处理过程或结果。</p>
+        <form id="taskRecordDialogForm" class="modal-form">
+          <div id="taskRecordDialogList" class="task-record-list"></div>
+          <label>
+            <span>新增记录</span>
+            <textarea id="taskRecordDialogTextarea" rows="5" placeholder="请输入处理过程、结论或下一步说明。"></textarea>
+          </label>
+          <div class="modal-actions">
+            <button id="taskRecordDialogCancelButton" class="chip" type="button">取消</button>
+            <button id="taskRecordDialogSubmitButton" class="primary-button" type="submit">保存记录</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -321,6 +373,17 @@
       </div>
     </div>
 
-    <script type="module" src="/app.js?v=20260409-8"></script>
+    <script src="/modules/ui-text-utils.js?v=20260413-1"></script>
+    <script src="/modules/domain-formatters.js?v=20260415-2"></script>
+    <script src="/modules/followup-history-utils.js?v=20260411-1"></script>
+    <script src="/modules/contact-editor-utils.js?v=20260411-1"></script>
+    <script src="/modules/insight-backup-utils.js?v=20260411-1"></script>
+    <script src="/modules/ui-render-utils.js?v=20260415-2"></script>
+    <script src="/modules/insight-content-utils.js?v=20260413-1"></script>
+    <script src="/modules/management-backup-render-utils.js?v=20260413-1"></script>
+    <script src="/modules/panel-render-utils.js?v=20260415-2"></script>
+    <script src="/modules/project-selection-utils.js?v=20260411-1"></script>
+    <script src="/modules/tab-render-utils.js?v=20260411-1"></script>
+    <script type="module" src="/app.js?v=20260415-2"></script>
   </body>
 </html>

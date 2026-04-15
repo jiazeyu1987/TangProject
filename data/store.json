@@ -2,9 +2,9 @@
   "meta": {
     "version": "0.1.0",
     "createdAt": "2026-04-05T09:00:00.000Z",
-    "updatedAt": "2026-04-09T11:11:09.864Z"
+    "updatedAt": "2026-04-15T08:42:33.400Z"
   },
-  "currentUserId": "user-li-wei",
+  "currentUserId": "user-b1a0f7a7-312d-4e6c-94bc-b4396647de58",
   "regions": [
     {
       "id": "region-east",
@@ -23,86 +23,597 @@
       "name": "李伟",
       "role": "specialist",
       "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
       "account": "user-li-wei",
       "passwordSalt": "738be754a0a5e6a2467e95a105cb8a0c",
       "passwordHash": "e0c4937bbe4344117d75f6f24baa099be55f2c71eb2edbf3d341a8dfac7b4ebb75c9db716c84674d3a88ce442fe08fbf6123794b5b4aa41a90296596adc01087",
-      "createdAt": "2026-04-09T05:50:27.747Z"
+      "createdAt": "2026-04-09T05:50:27.747Z",
+      "isBackupAdmin": false
     },
     {
       "id": "user-sun-min",
       "name": "孙敏",
       "role": "specialist",
       "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
       "account": "user-sun-min",
       "passwordSalt": "5025d83f8ef9ee160bfb13556b7b1cea",
       "passwordHash": "485374c4bfcd7001f3e9a5a51a4c6fee2f2162da49bf029a6ab3d80291cd7fc5d5e2bdae296354ab3bdd36f6cc92b37056dade3db064beda763340c29acc4413",
-      "createdAt": "2026-04-09T05:50:27.789Z"
+      "createdAt": "2026-04-09T05:50:27.789Z",
+      "isBackupAdmin": false
     },
     {
       "id": "user-wang-chao",
       "name": "王超",
       "role": "manager",
       "regionId": "region-east",
+      "supervisorUserId": "",
       "account": "user-wang-chao",
       "passwordSalt": "615083ea95b212db799787930de45e10",
       "passwordHash": "aa8ad99766599efe4d80a4b34cd2c88c4ab89313f903626ea1d1a785197f7ea7d4bc686f417331422bf813f61c860d0d10d19ed03cd1b0387740d27a12ecb6ba",
-      "createdAt": "2026-04-09T05:50:27.828Z"
+      "createdAt": "2026-04-09T05:50:27.828Z",
+      "isBackupAdmin": false
     },
     {
       "id": "user-he-nan",
       "name": "何楠",
       "role": "specialist",
       "regionId": "region-central",
+      "supervisorUserId": "",
       "account": "user-he-nan",
       "passwordSalt": "2fcb35eb6ecfcf7c8ad143cdab349ce3",
       "passwordHash": "c3d12701d7b709bd1648f66a0d121a52b52cdca1b19bbeffd4ffc9c32bd24900bf0746ab455e94d49dfbf1efcf72b74312719ab3e2686473edc794a2a9eacee6",
-      "createdAt": "2026-04-09T05:50:27.866Z"
+      "createdAt": "2026-04-09T05:50:27.866Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-a3ec679e-7be7-4e8b-ab36-aafa03f2e2ac",
+      "name": "测试用户",
+      "role": "manager",
+      "regionId": "region-east",
+      "supervisorUserId": "",
+      "account": "codex_ui_fix_20260410",
+      "passwordSalt": "915ccc50afe4baec56d05bfd8978ac62",
+      "passwordHash": "e204dd938deaae3e25b120d7a48a27dc90acd60595d7cc9cbcd78da50d2682b2117756b0b5b9585af02c358e475cb4076f883cce4c6dc6c4e659176581bc3579",
+      "createdAt": "2026-04-10T02:01:29.569Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-dd96440d-3ac0-41b1-8cd9-3aa9199a0a5d",
+      "name": "数据备份管理员",
+      "role": "manager",
+      "regionId": "region-east",
+      "supervisorUserId": "",
+      "account": "backup-admin",
+      "passwordSalt": "be158fa8a0470ebcd849050ec0c0304c",
+      "passwordHash": "7a9108c82383c9f7851db5963620b851e7e1ecaa0745cf7b3ac160564be69aca4c11e857d218d3d0ff36d220bb091068734d243ad58991be8164f078b035a527",
+      "createdAt": "2026-04-10T05:13:21.505Z",
+      "isBackupAdmin": true
+    },
+    {
+      "id": "user-b95bea46-231a-44bd-a5be-5c85e34e3d7a",
+      "name": "Contact Edit Tester",
+      "role": "manager",
+      "regionId": "region-east",
+      "supervisorUserId": "",
+      "account": "contact_edit_test_1775837445828",
+      "passwordSalt": "5590005bffeba38b42d88a763a056219",
+      "passwordHash": "36b4f5f4d0a9f51ce8c013cf8fb3cac5e36eaa7499d070a7eaf2d9f2e22ccb74c7105d86f109d07ffeab42b40b2c130de474aaff722ec154126f0ba7fa3a8351",
+      "createdAt": "2026-04-10T16:10:45.869Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-cfba9c87-336b-4738-a771-66f67ebcf9e2",
+      "name": "E2E Drag User",
+      "role": "specialist",
+      "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "account": "e2e-drag-1775923123767",
+      "passwordSalt": "07d93126ac1cdad0f11060025088d139",
+      "passwordHash": "60dbc3859e01e07ec4b412d9983bb96e1dc427a803809075639efffa4a4c0e1725bf7d21ef30363ba402984caa4497acc603dc9d339f27ee1f864ef247355f2e",
+      "createdAt": "2026-04-11T15:58:44.044Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-174c4534-e566-4955-ac7d-f7d00600135c",
+      "name": "E2E Drag User",
+      "role": "manager",
+      "regionId": "region-east",
+      "supervisorUserId": "",
+      "account": "e2e-drag-1775923227177",
+      "passwordSalt": "409edd8dc8b34909ec9c6e3d04a9cbe1",
+      "passwordHash": "7a3c962e7ac995d385fba8289f889cab570dbb2ffcd7eccd5cb7ccd0095bbfa6b15ee3431a0ac59a5ab475b42bf21d6ccb5e1037f946fe82c823374b48b98ae6",
+      "createdAt": "2026-04-11T16:00:27.318Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-a053b7ec-12c4-410e-89be-5bec63551dbf",
+      "name": "E2E??1775927715902",
+      "role": "specialist",
+      "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "account": "e2e-specialist-1775927715902",
+      "passwordSalt": "151d883ad0da0eaf93c7fbe5053135e4",
+      "passwordHash": "c4984905c5b776af4bc8ad4ec1193b2a57bc5309fa743cc87742b26bbde13a3a2e84c860de03a326a358d07db48f7e4b1fc2c15416480579647d918c7f3e3671",
+      "createdAt": "2026-04-11T17:15:19.826Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-196ef812-19b0-4c73-9794-4c80378854c1",
+      "name": "E2E??1775927985673",
+      "role": "specialist",
+      "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "account": "e2e-specialist-1775927985673",
+      "passwordSalt": "784c74c2492771ad245a55d81652cc36",
+      "passwordHash": "3628ac71847e3846961620122c190212dbf92203a8d34c0b4460abc7d537c47c0c4c9312ca0341777971a4d4385ac029f9a084f41795bc2fbd8d54b7e1fb580a",
+      "createdAt": "2026-04-11T17:19:49.326Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-60c80b92-1867-4525-a5d1-1a1832e9164b",
+      "name": "E2E??1775928192546",
+      "role": "specialist",
+      "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "account": "e2e-specialist-1775928192546",
+      "passwordSalt": "540a9d529b3f61485944cd4b3b3d84f5",
+      "passwordHash": "273bdf051f10d09a105eb537de1f596ef019b739b59408fa6a9273024c8f529778c38de094ddcd3ecd3f765a3b84c400c7b7f21f7dd82d3d7bb5efea9c2d710e",
+      "createdAt": "2026-04-11T17:23:17.050Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-37675314-0690-4f7d-a5aa-1b9dcdf638aa",
+      "name": "E2E??1775928654260",
+      "role": "specialist",
+      "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "account": "e2e-specialist-1775928654260",
+      "passwordSalt": "e28ce3ce9d905b394f06faebba057d48",
+      "passwordHash": "e51229fe218b6fe107e8a5bce6e0b2d6396a793c43b10dfd6b236c686c9939b1f3204ecf36f2be7183831915c9f868f2fa3c53806318315e3658fe2fac81c560",
+      "createdAt": "2026-04-11T17:30:58.235Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "name": "E2E??1775928654260",
+      "role": "supervisor",
+      "regionId": "region-east",
+      "supervisorUserId": "",
+      "account": "e2e-supervisor-1775928654260",
+      "passwordSalt": "77c0b8cbb052a4a90d334793d30deff1",
+      "passwordHash": "805c54cd74326d76d9bd664a594226122fd47286dc5d114b6c324ceb895d1372d1d6f869421200b6b4919b88890b09c483828875e33a4cffd5e8a900bd18682c",
+      "createdAt": "2026-04-11T17:30:58.644Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-3133043a-6e12-4c3b-ab70-89d900afa6bc",
+      "name": "追问校验员",
+      "role": "specialist",
+      "regionId": "region-east",
+      "supervisorUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "account": "followup-checker-20260415",
+      "passwordSalt": "1ecbc8a2e04154914487387289c7e712",
+      "passwordHash": "e859813940f0197728a4f8f1b2b1ec81c26bcb9c5d2dc1aea7e0642c894b0f3c27f105a7b9b229593c5109b147c6884fbfd705f81203d86f54a16ea8bd2f33fa",
+      "createdAt": "2026-04-15T03:32:35.134Z",
+      "isBackupAdmin": false
+    },
+    {
+      "id": "user-b1a0f7a7-312d-4e6c-94bc-b4396647de58",
+      "name": "追问校验经理",
+      "role": "manager",
+      "regionId": "region-east",
+      "supervisorUserId": "",
+      "account": "followup-manager-20260415",
+      "passwordSalt": "3c592bc7e5b5cf9e993cd65095aa648a",
+      "passwordHash": "f36f1f90b1e911e62d758c038bb8113dc82fbbefac3c0fb97958dd190e67ed8bac83468c80394ec5033b0682be50e2e49716b083ec6de9f73b41302a3a2b8d02",
+      "createdAt": "2026-04-15T03:33:25.992Z",
+      "isBackupAdmin": false
     }
   ],
   "authSessions": [
     {
-      "id": "auth-e24bea4b-3de8-41d5-9d22-68b92df4daad",
-      "userId": "user-li-wei",
-      "token": "788f3f40fab372c5dadbcd29f9550e21440fb535b3913b84",
-      "createdAt": "2026-04-09T06:00:42.770Z",
-      "lastUsedAt": "2026-04-09T06:00:42.770Z"
+      "id": "auth-4ce78d93-c8c4-45c9-a183-c03081a7e33b",
+      "userId": "user-dd96440d-3ac0-41b1-8cd9-3aa9199a0a5d",
+      "token": "dae35b129faa32224ba4890bfa4fd0bc7623804901661f6a",
+      "createdAt": "2026-04-10T06:31:31.500Z",
+      "lastUsedAt": "2026-04-10T06:31:31.507Z"
     },
     {
-      "id": "auth-78f87786-5cec-44d3-bb58-a0d9a78e3e21",
-      "userId": "user-li-wei",
-      "token": "087b896b717743c67beb2a64486e611b019c6737cb3805d9",
-      "createdAt": "2026-04-09T06:03:20.341Z",
-      "lastUsedAt": "2026-04-09T06:07:34.918Z"
+      "id": "auth-2b6a1405-a715-4cc4-921b-f9fd261b5eae",
+      "userId": "user-b95bea46-231a-44bd-a5be-5c85e34e3d7a",
+      "token": "a2a37b6bebd9ad8c09895bde0886f8563399f84798e66299",
+      "createdAt": "2026-04-10T16:10:45.869Z",
+      "lastUsedAt": "2026-04-10T16:10:45.875Z"
     },
     {
-      "id": "auth-f8c71752-4128-4689-aa4c-1fe7afee3fef",
-      "userId": "user-li-wei",
-      "token": "66d8942a63708f7d0f137bac8a21527c7723d254a23879d2",
-      "createdAt": "2026-04-09T06:17:32.135Z",
-      "lastUsedAt": "2026-04-09T06:17:32.135Z"
+      "id": "auth-dacbbb19-7ba8-4c6f-8f6e-012e0451f217",
+      "userId": "user-wang-chao",
+      "token": "c99a92e6a84c0915a728d16357eedd8f459c3ab87a923fb8",
+      "createdAt": "2026-04-10T17:34:59.390Z",
+      "lastUsedAt": "2026-04-10T17:34:59.444Z"
     },
     {
-      "id": "auth-d7f4bdfa-6cc6-4ce2-a931-86d095c4085b",
-      "userId": "user-li-wei",
-      "token": "e2222bb39e99e92fa807336ed033559e9185272233fd2bf0",
-      "createdAt": "2026-04-09T06:23:37.462Z",
-      "lastUsedAt": "2026-04-09T06:31:58.237Z"
+      "id": "auth-0feb92b1-d75e-4a19-a9e1-0d6d9f18ffb5",
+      "userId": "user-wang-chao",
+      "token": "48c6474aec9ce5132de7fd647023a0c95c9943f0c7905ad3",
+      "createdAt": "2026-04-10T17:36:44.737Z",
+      "lastUsedAt": "2026-04-10T17:36:44.737Z"
     },
     {
-      "id": "auth-9c58a941-386f-42ae-ae8d-0896b839b897",
-      "userId": "user-li-wei",
-      "token": "92ba64e731c79e7eb1b2432c0dc3f886eca69bf73dea3692",
-      "createdAt": "2026-04-09T06:54:47.674Z",
-      "lastUsedAt": "2026-04-09T06:59:25.173Z"
+      "id": "auth-435f1e0e-a60b-4e1b-a406-c6b86b271fea",
+      "userId": "user-wang-chao",
+      "token": "2ce02b297f43338a32c76553507d20c9a1804ad8000e814a",
+      "createdAt": "2026-04-10T17:56:18.792Z",
+      "lastUsedAt": "2026-04-10T17:56:18.792Z"
     },
     {
-      "id": "auth-65eb9a0a-9408-4279-a5fe-9f8462915766",
-      "userId": "user-li-wei",
-      "token": "df311686f8a0203d74c361a73e459cfbaba3cf29865c4ea9",
-      "createdAt": "2026-04-09T11:11:09.864Z",
-      "lastUsedAt": "2026-04-09T11:11:09.864Z"
+      "id": "auth-cec0ef38-a4aa-437d-b6c3-817fcd32b776",
+      "userId": "user-wang-chao",
+      "token": "2f960b5e902c5e30d98459877e73b5ebce18e0291ee7b112",
+      "createdAt": "2026-04-10T17:57:14.696Z",
+      "lastUsedAt": "2026-04-10T17:57:14.696Z"
+    },
+    {
+      "id": "auth-2199df30-76ea-4eed-9e06-5dfe72c7c5bf",
+      "userId": "user-wang-chao",
+      "token": "c5ad1e636b88163c50575dc3c06cf0aab73746667376651e",
+      "createdAt": "2026-04-10T17:58:25.169Z",
+      "lastUsedAt": "2026-04-10T17:58:25.169Z"
+    },
+    {
+      "id": "auth-2810d55a-c973-4aad-9336-9c110102de34",
+      "userId": "user-wang-chao",
+      "token": "ed541a39245f2a94182b1388117addf3199fed729c6a9947",
+      "createdAt": "2026-04-10T18:06:06.677Z",
+      "lastUsedAt": "2026-04-10T18:06:06.677Z"
+    },
+    {
+      "id": "auth-8c5a02f7-8aeb-47df-b176-c62f091c7616",
+      "userId": "user-wang-chao",
+      "token": "e07054aca8b86bf46306fddb10503f9a41273ebeae3020cf",
+      "createdAt": "2026-04-10T18:07:25.596Z",
+      "lastUsedAt": "2026-04-10T18:07:25.596Z"
+    },
+    {
+      "id": "auth-a1090e39-7feb-4fcc-ad06-4176ef071eb8",
+      "userId": "user-wang-chao",
+      "token": "fb3e0bfe71839a80dffd812cb7df7e5ff7de03ddef186643",
+      "createdAt": "2026-04-10T18:08:21.525Z",
+      "lastUsedAt": "2026-04-10T18:08:21.525Z"
+    },
+    {
+      "id": "auth-78411b99-ca57-4aa2-902b-8d28b1920507",
+      "userId": "user-wang-chao",
+      "token": "199f85f2537d3289a6e2adfc7aa0491cebd094313102b999",
+      "createdAt": "2026-04-10T18:09:55.379Z",
+      "lastUsedAt": "2026-04-10T18:09:55.379Z"
+    },
+    {
+      "id": "auth-843e45eb-e369-4096-ab05-9a7cf34b13c2",
+      "userId": "user-wang-chao",
+      "token": "1bc986750e3acfd4efc30c1dac5600589fe33ffed0e0d987",
+      "createdAt": "2026-04-10T18:11:36.916Z",
+      "lastUsedAt": "2026-04-10T18:11:36.916Z"
+    },
+    {
+      "id": "auth-9125388e-6461-4908-858d-472ad065be31",
+      "userId": "user-wang-chao",
+      "token": "17df67b1477d66b8235c919d7ec56c3d35fa2d4f0ab6308b",
+      "createdAt": "2026-04-10T18:13:34.407Z",
+      "lastUsedAt": "2026-04-10T18:13:34.407Z"
+    },
+    {
+      "id": "auth-f45cd275-7a4a-4fc3-90dc-be9ab8807815",
+      "userId": "user-cfba9c87-336b-4738-a771-66f67ebcf9e2",
+      "token": "6366a98634ffe2156787a7f029b08728608f3c3cfab1ff87",
+      "createdAt": "2026-04-11T15:58:44.044Z",
+      "lastUsedAt": "2026-04-11T15:58:44.044Z"
+    },
+    {
+      "id": "auth-c9e5d835-7943-415a-8154-ad10322cc84c",
+      "userId": "user-174c4534-e566-4955-ac7d-f7d00600135c",
+      "token": "c229edce9fdb7d31b591dbc65c777fccd7f084482dfb7917",
+      "createdAt": "2026-04-11T16:00:27.318Z",
+      "lastUsedAt": "2026-04-11T16:00:27.319Z"
+    },
+    {
+      "id": "auth-95a527f9-c2bc-459f-bcdd-40f2c2826b7a",
+      "userId": "user-a053b7ec-12c4-410e-89be-5bec63551dbf",
+      "token": "7d794889499d02902f9ec2245221a2e0e3471c2e5b4e988e",
+      "createdAt": "2026-04-11T17:15:19.826Z",
+      "lastUsedAt": "2026-04-11T17:15:19.826Z"
+    },
+    {
+      "id": "auth-fb482b63-7e64-49c5-a38b-ca786a486510",
+      "userId": "user-196ef812-19b0-4c73-9794-4c80378854c1",
+      "token": "e12d82df50e3814a96368f1b2a2f8932e105866722489547",
+      "createdAt": "2026-04-11T17:19:49.326Z",
+      "lastUsedAt": "2026-04-11T17:19:49.496Z"
+    },
+    {
+      "id": "auth-79eefe56-b0ba-4e89-99be-e978f330699a",
+      "userId": "user-60c80b92-1867-4525-a5d1-1a1832e9164b",
+      "token": "7a03d4403fdc4dc8bdc835e5c2885b8fcace0f75e2659cdb",
+      "createdAt": "2026-04-11T17:23:17.050Z",
+      "lastUsedAt": "2026-04-11T17:23:17.183Z"
+    },
+    {
+      "id": "auth-1e31d5e6-4e66-4837-8b85-3aba88243d18",
+      "userId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "token": "84e326ec276398e63a9122c78f6115e30074af80c09b9467",
+      "createdAt": "2026-04-11T17:30:58.644Z",
+      "lastUsedAt": "2026-04-11T17:30:58.644Z"
+    },
+    {
+      "id": "auth-ede03bb6-b222-430e-8729-4d65a318fd16",
+      "userId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "token": "cab1fa0df3efd26a175289112e0dcc2517d581d0fe7305a0",
+      "createdAt": "2026-04-11T17:31:02.491Z",
+      "lastUsedAt": "2026-04-11T17:31:02.874Z"
+    },
+    {
+      "id": "auth-b10a16c4-03b1-4b9e-a016-2ab5b9459ff4",
+      "userId": "user-wang-chao",
+      "token": "d77e1a6a066a22bba1b6b7ccb36f0ae6706da068d7b517e2",
+      "createdAt": "2026-04-12T14:56:12.873Z",
+      "lastUsedAt": "2026-04-12T14:56:12.873Z"
+    },
+    {
+      "id": "auth-34dcc1b5-a792-469b-b816-a9f50653ee35",
+      "userId": "user-wang-chao",
+      "token": "637c9a6cefaeddea56b35f22736d4f454dbb070972ecb6eb",
+      "createdAt": "2026-04-12T14:59:44.668Z",
+      "lastUsedAt": "2026-04-12T14:59:44.668Z"
+    },
+    {
+      "id": "auth-d12644a6-55e1-402a-abf0-0b316263bbb5",
+      "userId": "user-wang-chao",
+      "token": "cf7c2064b11d6c0b432513bb9929ff4b5f98a3572a5f6459",
+      "createdAt": "2026-04-12T14:59:44.763Z",
+      "lastUsedAt": "2026-04-12T14:59:44.763Z"
+    },
+    {
+      "id": "auth-909d2354-9020-4813-b829-d755acd257c8",
+      "userId": "user-wang-chao",
+      "token": "e693d85c3a857922a4fee3caa84ac2b0e0069afebc7607e7",
+      "createdAt": "2026-04-12T15:08:14.430Z",
+      "lastUsedAt": "2026-04-12T15:08:14.430Z"
+    },
+    {
+      "id": "auth-ddced613-fef7-4799-b60f-8b1fe9474262",
+      "userId": "user-wang-chao",
+      "token": "09bfbb0ac540c42f668bd4992ab559ff29f5318aefa38fb2",
+      "createdAt": "2026-04-12T15:12:49.996Z",
+      "lastUsedAt": "2026-04-12T15:12:49.996Z"
+    },
+    {
+      "id": "auth-27a5dac4-77a0-4c07-b63d-adfb0d5faee9",
+      "userId": "user-wang-chao",
+      "token": "e5ee7d5e8a3c4488918c5c8c56b72aec9533166e2917e5bd",
+      "createdAt": "2026-04-12T15:18:48.708Z",
+      "lastUsedAt": "2026-04-12T15:18:48.708Z"
+    },
+    {
+      "id": "auth-fec90ee5-72d3-40bc-8e6e-ba7664862dc2",
+      "userId": "user-wang-chao",
+      "token": "83977d3766cb498ab0de3ade0c0a0712e481f3c05d0a4fce",
+      "createdAt": "2026-04-12T15:21:14.749Z",
+      "lastUsedAt": "2026-04-12T15:21:14.749Z"
+    },
+    {
+      "id": "auth-c5e0f0ef-e8b5-4eb8-90cd-c5aeb2aeedd0",
+      "userId": "user-wang-chao",
+      "token": "0c6c705788f649dfde83420e8ff751da4f4d2dca67983417",
+      "createdAt": "2026-04-12T15:24:03.607Z",
+      "lastUsedAt": "2026-04-12T15:24:03.607Z"
+    },
+    {
+      "id": "auth-0e2bdbe9-ed66-4d5d-9c3d-bc30ae4593e1",
+      "userId": "user-wang-chao",
+      "token": "c1beded510f489909f9fdf9feeeb8c66c501e00ebbc3f72d",
+      "createdAt": "2026-04-12T15:28:51.993Z",
+      "lastUsedAt": "2026-04-12T15:28:51.993Z"
+    },
+    {
+      "id": "auth-551b2cdd-6539-4741-b493-cb2e14f739f2",
+      "userId": "user-wang-chao",
+      "token": "191e0e301df9ba3c140d2b72e2e31c1a6fab8d09505b231e",
+      "createdAt": "2026-04-12T15:34:39.211Z",
+      "lastUsedAt": "2026-04-12T15:34:39.211Z"
+    },
+    {
+      "id": "auth-7e7c225f-94a8-4680-81e0-60cd22a6dd43",
+      "userId": "user-wang-chao",
+      "token": "dbff749695b906ada985e88f69b905e549d7427a87e9d729",
+      "createdAt": "2026-04-12T15:39:59.229Z",
+      "lastUsedAt": "2026-04-12T15:39:59.229Z"
+    },
+    {
+      "id": "auth-bbbe8c0b-df76-4599-90fd-01f16e3e39b2",
+      "userId": "user-wang-chao",
+      "token": "d7108f4fb2eb3968a7a4293d2282cc41a7b03dc4c7c1992d",
+      "createdAt": "2026-04-12T15:43:20.372Z",
+      "lastUsedAt": "2026-04-12T15:43:20.372Z"
+    },
+    {
+      "id": "auth-cbc50c27-9690-4fda-8358-8bd056429c69",
+      "userId": "user-wang-chao",
+      "token": "085fc038a61dadf41392fb0863a490d609ce5672c4ef7a9a",
+      "createdAt": "2026-04-12T15:47:09.079Z",
+      "lastUsedAt": "2026-04-12T15:47:11.843Z"
+    },
+    {
+      "id": "auth-ee4d1323-5dba-43eb-8dc5-be1ee30f95bd",
+      "userId": "user-wang-chao",
+      "token": "b552b311ec3c509ad7cc6094fc46d1db1503053c826c53d5",
+      "createdAt": "2026-04-12T15:48:35.741Z",
+      "lastUsedAt": "2026-04-12T15:48:35.741Z"
+    },
+    {
+      "id": "auth-574704ca-2eeb-48e1-a9de-9f728f6a6bea",
+      "userId": "user-wang-chao",
+      "token": "e554517bd3c881546de01dd5749becd95ce0fa53cffe3c89",
+      "createdAt": "2026-04-12T15:49:24.658Z",
+      "lastUsedAt": "2026-04-12T15:49:24.707Z"
+    },
+    {
+      "id": "auth-c1e6866a-d60e-425a-8221-322514e8078d",
+      "userId": "user-wang-chao",
+      "token": "4cb9ea9fd085505d5fb1d86d3773e50e9c9ec182104885e4",
+      "createdAt": "2026-04-12T15:49:47.665Z",
+      "lastUsedAt": "2026-04-12T15:49:47.665Z"
+    },
+    {
+      "id": "auth-e72e2803-a329-49fb-82ca-280bc777ed2f",
+      "userId": "user-wang-chao",
+      "token": "a19983af741dfdf824569d6ffaf3bffe2847c83372ac56f6",
+      "createdAt": "2026-04-12T17:25:49.167Z",
+      "lastUsedAt": "2026-04-12T17:25:50.636Z"
+    },
+    {
+      "id": "auth-e25c5036-81a9-490c-bfb5-7c893319db2f",
+      "userId": "user-wang-chao",
+      "token": "5aa411ed4baf4b07f78ea39c1ea358f8ce326af6e1c95962",
+      "createdAt": "2026-04-12T17:27:38.463Z",
+      "lastUsedAt": "2026-04-12T17:27:38.493Z"
+    },
+    {
+      "id": "auth-df14cb8d-72fd-4d38-b584-55f09777086e",
+      "userId": "user-wang-chao",
+      "token": "a247e779c31dc47360d5a5af9da0de2166701e2cd0c08062",
+      "createdAt": "2026-04-12T17:28:58.578Z",
+      "lastUsedAt": "2026-04-12T17:28:58.578Z"
+    },
+    {
+      "id": "auth-a746e7e7-773a-4117-a3d1-da24a5f56813",
+      "userId": "user-wang-chao",
+      "token": "fb432e980d63598a71cdb1ab314919cc651ee824af9fe3f8",
+      "createdAt": "2026-04-12T17:29:53.706Z",
+      "lastUsedAt": "2026-04-12T17:29:53.706Z"
+    },
+    {
+      "id": "auth-264417e1-5417-4696-bc2b-cdcc1768c28c",
+      "userId": "user-wang-chao",
+      "token": "d112772a79c2b796bcf9a4d494262300f8ca31a77a259224",
+      "createdAt": "2026-04-12T17:30:49.989Z",
+      "lastUsedAt": "2026-04-12T17:30:49.989Z"
+    },
+    {
+      "id": "auth-db858992-1ee3-4c34-9883-844b3a6404b3",
+      "userId": "user-wang-chao",
+      "token": "33fb17720d5f22e15b6c6ebc603a11f50485538105d91f04",
+      "createdAt": "2026-04-12T17:31:56.967Z",
+      "lastUsedAt": "2026-04-12T17:31:56.967Z"
+    },
+    {
+      "id": "auth-755920a8-b8fe-40e0-a582-3a9f052efaa0",
+      "userId": "user-wang-chao",
+      "token": "cfb69eec784786f75fb45786f8f1d17f12696b6c975861a9",
+      "createdAt": "2026-04-12T17:34:54.314Z",
+      "lastUsedAt": "2026-04-12T17:34:55.745Z"
+    },
+    {
+      "id": "auth-d4e04481-f950-4c00-bc6e-b9fc6447905c",
+      "userId": "user-wang-chao",
+      "token": "62364d2a7c9966642e0481f3d4e67c66323703a91c627cb7",
+      "createdAt": "2026-04-12T18:06:55.336Z",
+      "lastUsedAt": "2026-04-12T18:06:55.336Z"
+    },
+    {
+      "id": "auth-979af167-d83a-49f9-a92d-4fca4a62ea82",
+      "userId": "user-wang-chao",
+      "token": "568bb9f8529ca0397ce37a086c92501969f049866681c2e9",
+      "createdAt": "2026-04-12T18:09:24.532Z",
+      "lastUsedAt": "2026-04-12T18:09:24.532Z"
+    },
+    {
+      "id": "auth-9b694865-a51c-46ee-9823-7de3ceb7c536",
+      "userId": "user-wang-chao",
+      "token": "62d23f53a570e945bfdc0f530386c1b6f214d1ec5eb0d47e",
+      "createdAt": "2026-04-12T18:09:26.996Z",
+      "lastUsedAt": "2026-04-12T18:09:26.996Z"
+    },
+    {
+      "id": "auth-5508a446-3b27-476d-939a-c5cfc83a7ba6",
+      "userId": "user-wang-chao",
+      "token": "a02adec4313ba236d05a33f056699c1ee78e33ef535d0980",
+      "createdAt": "2026-04-12T18:31:45.677Z",
+      "lastUsedAt": "2026-04-12T18:31:45.726Z"
+    },
+    {
+      "id": "auth-662a4efd-97d7-43ad-b091-846bc13cc2bc",
+      "userId": "user-wang-chao",
+      "token": "a0821acfcfe78d51d568db5506e021a176dd85281052b1ad",
+      "createdAt": "2026-04-12T18:56:45.202Z",
+      "lastUsedAt": "2026-04-12T18:56:45.300Z"
+    },
+    {
+      "id": "auth-b7c980b8-d9e7-44b6-a77d-2c0893c778e6",
+      "userId": "user-wang-chao",
+      "token": "51015897a410336562c0878976d6669074731f4fd07cb604",
+      "createdAt": "2026-04-12T19:02:11.486Z",
+      "lastUsedAt": "2026-04-12T19:02:16.402Z"
+    },
+    {
+      "id": "auth-c2954ce1-4ed9-4a85-b6a1-a8869caeb393",
+      "userId": "user-wang-chao",
+      "token": "6ab6cdc7e259cea3fd41ea8277de9900703bbb92e4f97ed9",
+      "createdAt": "2026-04-12T19:02:20.779Z",
+      "lastUsedAt": "2026-04-12T19:02:20.938Z"
+    },
+    {
+      "id": "auth-d6be431d-47dd-4c6e-aab3-56e125f9ca47",
+      "userId": "user-wang-chao",
+      "token": "67fa890cdee1aab4fb4ed497e1786a44b588fe3b6c807b95",
+      "createdAt": "2026-04-13T01:21:17.810Z",
+      "lastUsedAt": "2026-04-13T01:21:17.810Z"
+    },
+    {
+      "id": "auth-0a5f192b-ab9f-47b0-a8ca-46e443b6f882",
+      "userId": "user-wang-chao",
+      "token": "d707d331a16de038480ce77bdaa9275a3121474859ecc2b5",
+      "createdAt": "2026-04-13T02:19:56.897Z",
+      "lastUsedAt": "2026-04-13T02:19:56.897Z"
+    },
+    {
+      "id": "auth-9bf637ce-e4d4-4efe-bceb-40a5fddfdbd9",
+      "userId": "user-wang-chao",
+      "token": "a6eb31f1a44002cacbdbf2dafb08d3beba7127de6c83d7c7",
+      "createdAt": "2026-04-13T02:24:54.150Z",
+      "lastUsedAt": "2026-04-13T02:24:54.150Z"
+    },
+    {
+      "id": "auth-6d3752d2-5357-4557-8ab6-1dad39b881f8",
+      "userId": "user-b1a0f7a7-312d-4e6c-94bc-b4396647de58",
+      "token": "e85c5fcf3ee1b50cdded8a1f6dc88d2be73309f89a3e2214",
+      "createdAt": "2026-04-15T03:33:25.992Z",
+      "lastUsedAt": "2026-04-15T03:33:52.683Z"
+    },
+    {
+      "id": "auth-b716b48e-3910-46b6-828d-be295ad14690",
+      "userId": "user-b1a0f7a7-312d-4e6c-94bc-b4396647de58",
+      "token": "99dedf24d642a5f31876d4566d39d88c9ac0f9bfb140fbcd",
+      "createdAt": "2026-04-15T03:35:37.485Z",
+      "lastUsedAt": "2026-04-15T03:35:37.485Z"
+    },
+    {
+      "id": "auth-7eb61557-f1e1-4aa9-86c8-e932b2a07904",
+      "userId": "user-b1a0f7a7-312d-4e6c-94bc-b4396647de58",
+      "token": "483ae2ce53844f1ef9eb0d73d9db25f78575fed27831e765",
+      "createdAt": "2026-04-15T03:35:45.198Z",
+      "lastUsedAt": "2026-04-15T08:42:33.400Z"
     }
   ],
+  "backupPolicy": {
+    "maxBackups": 30,
+    "schedule": {
+      "frequency": "daily",
+      "hour": 6,
+      "minute": 10,
+      "weekday": 1
+    }
+  },
   "hospitals": [
     {
       "id": "hospital-sh-1",
@@ -131,6 +642,27 @@
       "name": "测试医院",
       "hospitalLevel": "未知",
       "city": ""
+    },
+    {
+      "id": "hospital-8495256f-9583-4b96-8402-bcd06b424246",
+      "regionId": "region-east",
+      "name": "E2E ?????? 1775927985673",
+      "hospitalLevel": "未知",
+      "city": "??"
+    },
+    {
+      "id": "hospital-e6d5b341-2e01-4246-acd9-0ae183940bcf",
+      "regionId": "region-east",
+      "name": "E2E ?????? 1775928192546",
+      "hospitalLevel": "未知",
+      "city": "??"
+    },
+    {
+      "id": "hospital-df7edcaf-298f-4680-a04d-24e16e568183",
+      "regionId": "region-east",
+      "name": "E2E ?????? 1775928654260",
+      "hospitalLevel": "未知",
+      "city": "??"
     }
   ],
   "departments": [
@@ -153,16 +685,31 @@
       "id": "department-hz-anes",
       "hospitalId": "hospital-hz-2",
       "name": "麻醉科"
+    },
+    {
+      "id": "department-81c2e582-88c8-4d27-aef1-43db0d71892c",
+      "hospitalId": "hospital-c947bdda-856f-41a2-9d02-65cf0a05c50e",
+      "name": "????"
+    },
+    {
+      "id": "department-9af81dd8-c38a-4473-9816-99299dc5bdaa",
+      "hospitalId": "hospital-hz-2",
+      "name": "神经内科、护理部"
+    },
+    {
+      "id": "department-93a59ced-d438-40e1-961c-ef99348195c8",
+      "hospitalId": "hospital-sh-1",
+      "name": "???"
     }
   ],
   "contacts": [
     {
       "id": "contact-sh-chen",
       "hospitalId": "hospital-sh-1",
-      "departmentId": "department-sh-pain",
-      "name": "陈主任",
-      "roleTitle": "科主任",
-      "lastContactAt": "2026-04-02T09:00:00.000Z"
+      "departmentId": "department-93a59ced-d438-40e1-961c-ef99348195c8",
+      "name": "???",
+      "roleTitle": "???",
+      "lastContactAt": "2026-04-12T15:49:24.707Z"
     },
     {
       "id": "contact-sz-lin",
@@ -179,6 +726,14 @@
       "name": "赵主任",
       "roleTitle": "科主任",
       "lastContactAt": "2026-03-18T09:00:00.000Z"
+    },
+    {
+      "id": "contact-961ba9c8-3376-49db-8e3c-62039979bdf9",
+      "hospitalId": "hospital-sh-1",
+      "departmentId": "department-93a59ced-d438-40e1-961c-ef99348195c8",
+      "name": "??",
+      "roleTitle": "",
+      "lastContactAt": "2026-04-12T15:49:24.707Z"
     }
   ],
   "stages": [
@@ -258,16 +813,49 @@
       "ownerUserId": "user-li-wei",
       "currentStageId": "stage-trial",
       "riskLevel": "high",
-      "managerAttentionNeeded": true,
-      "lastFollowUpAt": "2026-04-02T09:00:00.000Z",
-      "nextAction": "补充收费测算材料并锁定下一轮试用时间",
-      "nextActionDueAt": "2026-04-07T09:00:00.000Z",
-      "latestSummary": "疼痛科认可临床效果，但对收费路径和培训安排仍有顾虑。",
+      "managerAttentionNeeded": false,
+      "lastFollowUpAt": "2026-04-09T09:00:00.000Z",
+      "nextAction": "下周三前补齐收费测算与培训材料，并完成试用范围确认；待院内采购确认完成后同步回复最终结果。",
+      "nextActionDueAt": "2026-04-15T09:00:00.000Z",
+      "latestSummary": "已联系王超确认留言诉求，补充了院内采购确认和试用范围推进安排；需强调已对接王超，待院内采购确认完成后再回传最终结果。试用范围确认节点更新为下周三，补齐收费测算与培训材料后同步回复并继续跟进。",
       "currentIssueTagIds": [
         "issue-pricing",
-        "issue-training"
+        "issue-training",
+        "issue-procurement"
       ],
-      "latestUpdateId": "update-sh-1"
+      "latestUpdateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "nextActionSegments": [
+        {
+          "type": "text",
+          "text": "下周三前补齐收费测算与培训材料，并完成试用范围确认；待院内采购确认完成后同步回复最终结果。"
+        }
+      ],
+      "latestSummarySegments": [
+        {
+          "type": "text",
+          "text": "已联系"
+        },
+        {
+          "type": "contact",
+          "contactId": "contact-961ba9c8-3376-49db-8e3c-62039979bdf9",
+          "fallbackText": "王超"
+        },
+        {
+          "type": "text",
+          "text": "确认留言诉求，补充了院内采购确认和试用范围推进安排；需强调已对接"
+        },
+        {
+          "type": "contact",
+          "contactId": "contact-961ba9c8-3376-49db-8e3c-62039979bdf9",
+          "fallbackText": "王超"
+        },
+        {
+          "type": "text",
+          "text": "，待院内采购确认完成后再回传最终结果。试用范围确认节点更新为下周三，补齐收费测算与培训材料后同步回复并继续跟进。"
+        }
+      ],
+      "contactReferenceWarnings": [],
+      "initialDepartmentId": ""
     },
     {
       "id": "project-sz-1",
@@ -285,7 +873,21 @@
         "issue-training",
         "issue-workflow"
       ],
-      "latestUpdateId": "update-sz-1"
+      "latestUpdateId": "update-sz-1",
+      "nextActionSegments": [
+        {
+          "type": "text",
+          "text": "确认培训名单并发出材料"
+        }
+      ],
+      "latestSummarySegments": [
+        {
+          "type": "text",
+          "text": "康复科已接受试用结果，等护理侧完成培训排期。"
+        }
+      ],
+      "contactReferenceWarnings": [],
+      "initialDepartmentId": ""
     },
     {
       "id": "project-hz-2",
@@ -294,17 +896,26 @@
       "ownerUserId": "user-li-wei",
       "currentStageId": "stage-contact",
       "riskLevel": "high",
-      "managerAttentionNeeded": true,
-      "lastFollowUpAt": "2026-03-18T09:00:00.000Z",
-      "nextAction": "协调院内采购与麻醉科负责人开一次联合沟通",
-      "nextActionDueAt": "2026-04-05T09:00:00.000Z",
-      "latestSummary": "麻醉科仍在等待采购流程确认，对经济性材料提出更高要求。",
+      "managerAttentionNeeded": false,
+      "lastFollowUpAt": "2026-04-10T09:00:00.000Z",
+      "nextAction": "",
+      "nextActionDueAt": null,
+      "latestSummary": "与杭州市第二人民医院神经内科及护理部沟通，确认系统上线后先覆盖门诊随访录入。院方要求先完善病区联系人和门诊路径。当前待补充神经内科主任联系方式，并安排下周二与信息科确认对接人。运营要求先整理科室联系人清单，再提交阶段更新。",
       "currentIssueTagIds": [
-        "issue-procurement",
-        "issue-evidence",
+        "issue-coordination",
+        "issue-workflow",
         "issue-support"
       ],
-      "latestUpdateId": "update-hz-1"
+      "latestUpdateId": "update-4f0149f7-7c89-4081-9e5b-4d1ef6a04c4e",
+      "nextActionSegments": [],
+      "latestSummarySegments": [
+        {
+          "type": "text",
+          "text": "与杭州市第二人民医院神经内科及护理部沟通，确认系统上线后先覆盖门诊随访录入。院方要求先完善病区联系人和门诊路径。当前待补充神经内科主任联系方式，并安排下周二与信息科确认对接人。运营要求先整理科室联系人清单，再提交阶段更新。"
+        }
+      ],
+      "contactReferenceWarnings": [],
+      "initialDepartmentId": ""
     },
     {
       "id": "project-09e14b06-c976-4668-8be0-d1fbd0ac9aed",
@@ -312,14 +923,95 @@
       "regionId": "region-east",
       "ownerUserId": "user-li-wei",
       "currentStageId": "stage-target",
+      "riskLevel": "low",
+      "managerAttentionNeeded": false,
+      "lastFollowUpAt": "2026-04-10T09:00:00.000Z",
+      "nextAction": "",
+      "nextActionDueAt": null,
+      "latestSummary": "P2 integration test: submit reviewed snapshot with all next actions cancelled.",
+      "currentIssueTagIds": [],
+      "latestUpdateId": "update-b5365cb0-a4f9-40c0-a514-a66570f5130b",
+      "nextActionSegments": [],
+      "latestSummarySegments": [
+        {
+          "type": "text",
+          "text": "P2 integration test: submit reviewed snapshot with all next actions cancelled."
+        }
+      ],
+      "contactReferenceWarnings": [],
+      "initialDepartmentId": ""
+    },
+    {
+      "id": "project-3239006c-1b0d-4ee9-83ee-daf97b85f89e",
+      "hospitalId": "hospital-8495256f-9583-4b96-8402-bcd06b424246",
+      "regionId": "region-east",
+      "ownerUserId": "user-196ef812-19b0-4c73-9794-4c80378854c1",
+      "currentStageId": "stage-target",
       "riskLevel": "normal",
       "managerAttentionNeeded": false,
-      "lastFollowUpAt": "2026-04-09T06:31:58.238Z",
+      "lastFollowUpAt": "2026-04-11T17:19:49.496Z",
       "nextAction": "",
       "nextActionDueAt": null,
       "latestSummary": "新建医院项目，待录入首次纪要。",
       "currentIssueTagIds": [],
-      "latestUpdateId": null
+      "latestUpdateId": "",
+      "nextActionSegments": [],
+      "latestSummarySegments": [
+        {
+          "type": "text",
+          "text": "新建医院项目，待录入首次纪要。"
+        }
+      ],
+      "contactReferenceWarnings": [],
+      "initialDepartmentId": ""
+    },
+    {
+      "id": "project-c59be4d9-a902-4edb-abdd-7dcd328ec9fb",
+      "hospitalId": "hospital-e6d5b341-2e01-4246-acd9-0ae183940bcf",
+      "regionId": "region-east",
+      "ownerUserId": "user-60c80b92-1867-4525-a5d1-1a1832e9164b",
+      "currentStageId": "stage-target",
+      "riskLevel": "normal",
+      "managerAttentionNeeded": false,
+      "lastFollowUpAt": "2026-04-11T17:23:17.183Z",
+      "nextAction": "",
+      "nextActionDueAt": null,
+      "latestSummary": "新建医院项目，待录入首次纪要。",
+      "currentIssueTagIds": [],
+      "latestUpdateId": "",
+      "nextActionSegments": [],
+      "latestSummarySegments": [
+        {
+          "type": "text",
+          "text": "新建医院项目，待录入首次纪要。"
+        }
+      ],
+      "contactReferenceWarnings": [],
+      "initialDepartmentId": ""
+    },
+    {
+      "id": "project-e15cf13d-22d2-4da5-aa8a-dc6f44b97ce8",
+      "hospitalId": "hospital-df7edcaf-298f-4680-a04d-24e16e568183",
+      "regionId": "region-east",
+      "ownerUserId": "user-37675314-0690-4f7d-a5aa-1b9dcdf638aa",
+      "currentStageId": "stage-target",
+      "riskLevel": "normal",
+      "managerAttentionNeeded": false,
+      "lastFollowUpAt": "2026-04-11T17:30:58.359Z",
+      "nextAction": "",
+      "nextActionDueAt": null,
+      "latestSummary": "新建医院项目，待录入首次纪要。",
+      "currentIssueTagIds": [],
+      "latestUpdateId": "",
+      "nextActionSegments": [],
+      "latestSummarySegments": [
+        {
+          "type": "text",
+          "text": "新建医院项目，待录入首次纪要。"
+        }
+      ],
+      "contactReferenceWarnings": [],
+      "initialDepartmentId": ""
     }
   ],
   "updates": [
@@ -348,7 +1040,33 @@
         "issue-training"
       ],
       "sourceNote": "今天去上海一院疼痛科见了陈主任，主任认可效果，但说收费路径还不清楚，护士这边培训最好提前排。",
-      "createdAt": "2026-04-02T09:00:00.000Z"
+      "createdAt": "2026-04-02T09:00:00.000Z",
+      "sessionId": "",
+      "feedbackSummarySegments": [
+        {
+          "type": "text",
+          "text": "主任认可镇痛效果，希望先补一版收费测算，再决定扩大试用。"
+        }
+      ],
+      "blockersSegments": [
+        {
+          "type": "text",
+          "text": "收费路径不清晰，培训资源也需要提前锁定。"
+        }
+      ],
+      "opportunitiesSegments": [
+        {
+          "type": "text",
+          "text": "如果经济性说明顺利通过，下周可以追加 3 例试用。"
+        }
+      ],
+      "nextStepSegments": [
+        {
+          "type": "text",
+          "text": "补充收费测算材料并与护士长确认培训时间"
+        }
+      ],
+      "contactReferenceWarnings": []
     },
     {
       "id": "update-sz-1",
@@ -375,7 +1093,33 @@
         "issue-workflow"
       ],
       "sourceNote": "苏州中心医院康复科试用反馈不错，林护士长说要统一培训材料和流程。",
-      "createdAt": "2026-03-30T09:00:00.000Z"
+      "createdAt": "2026-03-30T09:00:00.000Z",
+      "sessionId": "",
+      "feedbackSummarySegments": [
+        {
+          "type": "text",
+          "text": "康复科试用反馈稳定，护理侧要求统一培训材料和操作 SOP。"
+        }
+      ],
+      "blockersSegments": [
+        {
+          "type": "text",
+          "text": "培训排期未锁定，使用流程还需标准化。"
+        }
+      ],
+      "opportunitiesSegments": [
+        {
+          "type": "text",
+          "text": "如果本周把培训做完，月底有机会进入常规使用。"
+        }
+      ],
+      "nextStepSegments": [
+        {
+          "type": "text",
+          "text": "确认培训名单并发出培训资料"
+        }
+      ],
+      "contactReferenceWarnings": []
     },
     {
       "id": "update-hz-1",
@@ -403,7 +1147,220 @@
         "issue-support"
       ],
       "sourceNote": "杭州二院麻醉科赵主任愿意了解，但说采购和预算都卡着，需要更强支持。",
-      "createdAt": "2026-03-18T09:00:00.000Z"
+      "createdAt": "2026-03-18T09:00:00.000Z",
+      "sessionId": "",
+      "feedbackSummarySegments": [
+        {
+          "type": "contact",
+          "contactId": "contact-hz-zhao",
+          "fallbackText": "赵主任"
+        },
+        {
+          "type": "text",
+          "text": "有兴趣，但明确要求先走完院内采购和成本论证。"
+        }
+      ],
+      "blockersSegments": [
+        {
+          "type": "text",
+          "text": "采购流程不清楚，科室支持力度不足，经济性材料不完整。"
+        }
+      ],
+      "opportunitiesSegments": [
+        {
+          "type": "text",
+          "text": "如果管理层出面协调设备科，本项目还有机会重新推进。"
+        }
+      ],
+      "nextStepSegments": [
+        {
+          "type": "text",
+          "text": "梳理采购流程并准备经济性说明，争取下一次联合沟通"
+        }
+      ],
+      "contactReferenceWarnings": []
+    },
+    {
+      "id": "update-01c20ddc-9861-4f80-b969-4f972813dca3",
+      "projectId": "project-sh-1",
+      "createdByUserId": "user-li-wei",
+      "sessionId": "session-ade9cd0a-f4d6-4838-b443-40e79778fa4f",
+      "visitDate": "2026-04-09",
+      "departmentId": "department-sh-pain",
+      "contactEntries": [],
+      "feedbackSummary": "已根据留言完成回复，并同步补充纪要。原始上级留言内容无法识别，追问补充信息为无。",
+      "blockers": "",
+      "opportunities": "",
+      "nextStep": "联系相关人员核实上级留言原文及具体诉求后，更新试用评估进展。",
+      "stageBeforeId": "stage-trial",
+      "stageAfterId": "stage-trial",
+      "managerAttentionNeeded": false,
+      "issueTagIds": [],
+      "sourceNote": "【备注回复纪要】\n关联日期：2026-04-09\n关联科室：疼痛科\n上级留言：?????????????????????????\n回复内容：\n已根据留言完成回复，并同步补充纪要。",
+      "createdAt": "2026-04-09T15:10:41.004Z",
+      "feedbackSummarySegments": [
+        {
+          "type": "text",
+          "text": "已根据留言完成回复，并同步补充纪要。原始上级留言内容无法识别，追问补充信息为无。"
+        }
+      ],
+      "blockersSegments": [],
+      "opportunitiesSegments": [],
+      "nextStepSegments": [
+        {
+          "type": "text",
+          "text": "联系相关人员核实上级留言原文及具体诉求后，更新试用评估进展。"
+        }
+      ],
+      "contactReferenceWarnings": []
+    },
+    {
+      "id": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "projectId": "project-sh-1",
+      "createdByUserId": "user-li-wei",
+      "sessionId": "session-deb596e4-4a84-43f0-b49a-fce2a6dca173",
+      "visitDate": "2026-04-09",
+      "departmentId": "department-sh-pain",
+      "contactEntries": [
+        {
+          "contactId": "contact-961ba9c8-3376-49db-8e3c-62039979bdf9",
+          "name": "王超",
+          "role": ""
+        }
+      ],
+      "feedbackSummary": "已联系王超确认留言诉求，补充了院内采购确认和试用范围推进安排；需强调已对接王超，待院内采购确认完成后再回传最终结果。试用范围确认节点更新为下周三，补齐收费测算与培训材料后同步回复并继续跟进。",
+      "blockers": "院内采购确认完成前无法回传最终结果。",
+      "opportunities": "已对接关键联系人王超，可借助本次采购确认与试用范围推进，推动试用评估继续向前。",
+      "nextStep": "下周三前补齐收费测算与培训材料，并完成试用范围确认；待院内采购确认完成后同步回复最终结果。",
+      "stageBeforeId": "stage-trial",
+      "stageAfterId": "stage-trial",
+      "managerAttentionNeeded": false,
+      "issueTagIds": [
+        "issue-pricing",
+        "issue-training",
+        "issue-procurement"
+      ],
+      "sourceNote": "【备注回复纪要】\n关联日期：2026-04-09\n关联科室：疼痛科\n上级留言：????????????????????????\n回复内容：\n已联系王超确认留言诉求，补充了院内采购确认和试用范围推进安排；下周三前补齐收费测算与培训材料后，再同步回复结果并继续跟进。\n\n【补充编辑】\n\n补充：本次回复需强调已对接王超，院内采购确认完成后再回传最终结果；请将试用范围确认节点更新为下周三。",
+      "createdAt": "2026-04-09T16:00:57.970Z",
+      "feedbackSummarySegments": [
+        {
+          "type": "text",
+          "text": "已联系"
+        },
+        {
+          "type": "contact",
+          "contactId": "contact-961ba9c8-3376-49db-8e3c-62039979bdf9",
+          "fallbackText": "王超"
+        },
+        {
+          "type": "text",
+          "text": "确认留言诉求，补充了院内采购确认和试用范围推进安排；需强调已对接"
+        },
+        {
+          "type": "contact",
+          "contactId": "contact-961ba9c8-3376-49db-8e3c-62039979bdf9",
+          "fallbackText": "王超"
+        },
+        {
+          "type": "text",
+          "text": "，待院内采购确认完成后再回传最终结果。试用范围确认节点更新为下周三，补齐收费测算与培训材料后同步回复并继续跟进。"
+        }
+      ],
+      "blockersSegments": [
+        {
+          "type": "text",
+          "text": "院内采购确认完成前无法回传最终结果。"
+        }
+      ],
+      "opportunitiesSegments": [
+        {
+          "type": "text",
+          "text": "已对接关键联系人"
+        },
+        {
+          "type": "contact",
+          "contactId": "contact-961ba9c8-3376-49db-8e3c-62039979bdf9",
+          "fallbackText": "王超"
+        },
+        {
+          "type": "text",
+          "text": "，可借助本次采购确认与试用范围推进，推动试用评估继续向前。"
+        }
+      ],
+      "nextStepSegments": [
+        {
+          "type": "text",
+          "text": "下周三前补齐收费测算与培训材料，并完成试用范围确认；待院内采购确认完成后同步回复最终结果。"
+        }
+      ],
+      "contactReferenceWarnings": []
+    },
+    {
+      "id": "update-b5365cb0-a4f9-40c0-a514-a66570f5130b",
+      "projectId": "project-09e14b06-c976-4668-8be0-d1fbd0ac9aed",
+      "createdByUserId": "user-li-wei",
+      "sessionId": "session-7cbb1050-bf99-46c3-b22c-f4e6122ced45",
+      "visitDate": "2026-04-10",
+      "departmentId": "department-81c2e582-88c8-4d27-aef1-43db0d71892c",
+      "contactEntries": [],
+      "feedbackSummary": "P2 integration test: submit reviewed snapshot with all next actions cancelled.",
+      "blockers": "",
+      "opportunities": "",
+      "nextStep": "",
+      "stageBeforeId": "stage-target",
+      "stageAfterId": "stage-target",
+      "managerAttentionNeeded": false,
+      "issueTagIds": [],
+      "sourceNote": "P2 integration test note",
+      "createdAt": "2026-04-09T16:40:15.747Z",
+      "feedbackSummarySegments": [
+        {
+          "type": "text",
+          "text": "P2 integration test: submit reviewed snapshot with all next actions cancelled."
+        }
+      ],
+      "blockersSegments": [],
+      "opportunitiesSegments": [],
+      "nextStepSegments": [],
+      "contactReferenceWarnings": []
+    },
+    {
+      "id": "update-4f0149f7-7c89-4081-9e5b-4d1ef6a04c4e",
+      "projectId": "project-hz-2",
+      "createdByUserId": "user-li-wei",
+      "sessionId": "session-d1b472e1-2ed6-4040-91b2-624f9c5817d8",
+      "visitDate": "2026-04-10",
+      "departmentId": "department-9af81dd8-c38a-4473-9816-99299dc5bdaa",
+      "contactEntries": [],
+      "feedbackSummary": "与杭州市第二人民医院神经内科及护理部沟通，确认系统上线后先覆盖门诊随访录入。院方要求先完善病区联系人和门诊路径。当前待补充神经内科主任联系方式，并安排下周二与信息科确认对接人。运营要求先整理科室联系人清单，再提交阶段更新。",
+      "blockers": "",
+      "opportunities": "系统上线后可先从门诊随访录入场景切入，逐步推进院内落地。",
+      "nextStep": "",
+      "stageBeforeId": "stage-contact",
+      "stageAfterId": "stage-contact",
+      "managerAttentionNeeded": false,
+      "issueTagIds": [
+        "issue-coordination",
+        "issue-workflow",
+        "issue-support"
+      ],
+      "sourceNote": "今天到杭州市第二人民医院神经内科与护理部沟通，确认系统上线后先覆盖门诊随访录入。对方要求先完善病区联系人和门诊路径，当前有两个待处理事项：1. 补充神经内科主任联系方式；2. 安排下周二与信息科确认对接人。运营要求先整理科室联系人清单，再提交阶段更新。",
+      "createdAt": "2026-04-09T17:45:33.621Z",
+      "feedbackSummarySegments": [
+        {
+          "type": "text",
+          "text": "与杭州市第二人民医院神经内科及护理部沟通，确认系统上线后先覆盖门诊随访录入。院方要求先完善病区联系人和门诊路径。当前待补充神经内科主任联系方式，并安排下周二与信息科确认对接人。运营要求先整理科室联系人清单，再提交阶段更新。"
+        }
+      ],
+      "blockersSegments": [],
+      "opportunitiesSegments": [
+        {
+          "type": "text",
+          "text": "系统上线后可先从门诊随访录入场景切入，逐步推进院内落地。"
+        }
+      ],
+      "nextStepSegments": [],
+      "contactReferenceWarnings": []
     }
   ],
   "tasks": [
@@ -418,7 +1375,26 @@
       "status": "todo",
       "priority": "high",
       "completedAt": null,
-      "createdAt": "2026-04-02T09:10:00.000Z"
+      "createdAt": "2026-04-02T09:10:00.000Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "补充上海一院收费测算材料"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "对接总部市场团队，整理收费路径和经济性说明。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-sh-chen"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": "2026-04-07T09:00:00.000Z",
+      "dueDateHistory": [],
+      "records": []
     },
     {
       "id": "task-sz-1",
@@ -431,7 +1407,26 @@
       "status": "in_progress",
       "priority": "medium",
       "completedAt": null,
-      "createdAt": "2026-03-30T09:10:00.000Z"
+      "createdAt": "2026-03-30T09:10:00.000Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "确认苏州中心医院培训名单"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "把护士端培训名单和培训物料一次对齐。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-sz-lin"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": "2026-04-10T09:00:00.000Z",
+      "dueDateHistory": [],
+      "records": []
     },
     {
       "id": "task-hz-1",
@@ -444,7 +1439,26 @@
       "status": "todo",
       "priority": "high",
       "completedAt": null,
-      "createdAt": "2026-03-18T09:10:00.000Z"
+      "createdAt": "2026-03-18T09:10:00.000Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "拉通杭州二院采购与麻醉科联合沟通"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "需要区域经理参与，确认采购节点与证据材料要求。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-hz-zhao"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": "2026-03-24T09:00:00.000Z",
+      "dueDateHistory": [],
+      "records": []
     },
     {
       "id": "task-sh-2",
@@ -457,7 +1471,184 @@
       "status": "completed",
       "priority": "medium",
       "completedAt": "2026-04-05T09:00:00.000Z",
-      "createdAt": "2026-04-02T09:12:00.000Z"
+      "createdAt": "2026-04-02T09:12:00.000Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "跟护士端确认试用培训时间"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "锁定下一轮试用前的培训时段。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-sh-chen"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": "2026-04-05T09:00:00.000Z",
+      "dueDateHistory": [],
+      "records": []
+    },
+    {
+      "id": "task-18501435-27f0-4556-bc54-7748a6265f69",
+      "projectId": "project-sh-1",
+      "updateId": "update-01c20ddc-9861-4f80-b969-4f972813dca3",
+      "title": "补充并确认上级留言的具体内容，完善本次纪要关键信息",
+      "description": "来源于 上海市第一人民医院 的 AI 录入纪要。",
+      "assigneeUserId": "user-li-wei",
+      "dueAt": null,
+      "status": "todo",
+      "priority": "medium",
+      "completedAt": null,
+      "createdAt": "2026-04-09T15:10:41.004Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "补充并确认上级留言的具体内容，完善本次纪要关键信息"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "来源于 上海市第一人民医院 的 AI 录入纪要。"
+        }
+      ],
+      "relatedContactIds": [],
+      "contactReferenceWarnings": [],
+      "initialDueAt": null,
+      "dueDateHistory": [],
+      "records": []
+    },
+    {
+      "id": "task-61dc6bfe-1764-45c5-a742-3fb7fd6da20a",
+      "projectId": "project-sh-1",
+      "updateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "title": "补齐收费测算材料",
+      "description": "来源于 上海市第一人民医院 的 AI 录入纪要。",
+      "assigneeUserId": "user-li-wei",
+      "dueAt": "2026-04-15T09:00:00.000Z",
+      "status": "todo",
+      "priority": "medium",
+      "completedAt": null,
+      "createdAt": "2026-04-09T16:00:57.970Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "补齐收费测算材料"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "来源于 上海市第一人民医院 的 AI 录入纪要。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-961ba9c8-3376-49db-8e3c-62039979bdf9"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": "2026-04-15T09:00:00.000Z",
+      "dueDateHistory": [],
+      "records": []
+    },
+    {
+      "id": "task-7457ec06-7cd9-4025-9474-2c2e8e3db697",
+      "projectId": "project-sh-1",
+      "updateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "title": "补齐培训材料",
+      "description": "来源于 上海市第一人民医院 的 AI 录入纪要。",
+      "assigneeUserId": "user-li-wei",
+      "dueAt": "2026-04-15T09:00:00.000Z",
+      "status": "todo",
+      "priority": "medium",
+      "completedAt": null,
+      "createdAt": "2026-04-09T16:00:57.970Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "补齐培训材料"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "来源于 上海市第一人民医院 的 AI 录入纪要。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-961ba9c8-3376-49db-8e3c-62039979bdf9"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": "2026-04-15T09:00:00.000Z",
+      "dueDateHistory": [],
+      "records": []
+    },
+    {
+      "id": "task-9d0f09c4-7840-4d68-8953-391458b0e996",
+      "projectId": "project-sh-1",
+      "updateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "title": "更新并确认试用范围节点",
+      "description": "来源于 上海市第一人民医院 的 AI 录入纪要。",
+      "assigneeUserId": "user-li-wei",
+      "dueAt": "2026-04-15T09:00:00.000Z",
+      "status": "todo",
+      "priority": "medium",
+      "completedAt": null,
+      "createdAt": "2026-04-09T16:00:57.970Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "更新并确认试用范围节点"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "来源于 上海市第一人民医院 的 AI 录入纪要。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-961ba9c8-3376-49db-8e3c-62039979bdf9"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": "2026-04-15T09:00:00.000Z",
+      "dueDateHistory": [],
+      "records": []
+    },
+    {
+      "id": "task-064460e7-932a-4b4e-acdd-f63c0167cb9e",
+      "projectId": "project-sh-1",
+      "updateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "title": "待院内采购确认完成后回传最终结果并继续跟进",
+      "description": "来源于 上海市第一人民医院 的 AI 录入纪要。",
+      "assigneeUserId": "user-li-wei",
+      "dueAt": null,
+      "status": "todo",
+      "priority": "medium",
+      "completedAt": null,
+      "createdAt": "2026-04-09T16:00:57.970Z",
+      "titleSegments": [
+        {
+          "type": "text",
+          "text": "待院内采购确认完成后回传最终结果并继续跟进"
+        }
+      ],
+      "descriptionSegments": [
+        {
+          "type": "text",
+          "text": "来源于 上海市第一人民医院 的 AI 录入纪要。"
+        }
+      ],
+      "relatedContactIds": [
+        "contact-961ba9c8-3376-49db-8e3c-62039979bdf9"
+      ],
+      "contactReferenceWarnings": [],
+      "initialDueAt": null,
+      "dueDateHistory": [],
+      "records": []
     }
   ],
   "remarks": [
@@ -483,9 +1674,9 @@
       "toUserId": "user-li-wei",
       "content": "?????????????????????????",
       "createdAt": "2026-04-06T12:20:00.000Z",
-      "replyContent": "",
-      "replyByUserId": "",
-      "repliedAt": null,
+      "replyContent": "已根据留言完成回复，并同步补充纪要。",
+      "replyByUserId": "user-li-wei",
+      "repliedAt": "2026-04-09T15:09:50.461Z",
       "readByUserId": "user-li-wei",
       "readAt": "2026-04-08T15:45:31.921Z"
     },
@@ -514,8 +1705,8 @@
       "replyContent": "",
       "replyByUserId": "",
       "repliedAt": null,
-      "readByUserId": "",
-      "readAt": null
+      "readByUserId": "user-li-wei",
+      "readAt": "2026-04-09T15:11:32.005Z"
     },
     {
       "id": "remark-sh-5",
@@ -539,6 +1730,70 @@
       "toUserId": "user-li-wei",
       "content": "????????????????????????",
       "createdAt": "2026-04-08T03:05:00.000Z",
+      "replyContent": "已联系王超确认留言诉求，补充了院内采购确认和试用范围推进安排；下周三前补齐收费测算与培训材料后，再同步回复结果并继续跟进。",
+      "replyByUserId": "user-li-wei",
+      "repliedAt": "2026-04-09T15:59:52.582Z",
+      "readByUserId": "user-li-wei",
+      "readAt": "2026-04-09T15:59:52.582Z"
+    },
+    {
+      "id": "remark-1f34e78c-c691-4c5f-8e49-a2d55b129cdf",
+      "projectId": "project-e15cf13d-22d2-4da5-aa8a-dc6f44b97ce8",
+      "updateId": null,
+      "historySessionId": "session-followup-e2e-1775928654260",
+      "historyQuestionId": "msg-followup-question-e2e-1775928654260",
+      "fromUserId": "user-1cdcd535-e417-4990-bee0-d7412ed32500",
+      "toUserId": "user-37675314-0690-4f7d-a5aa-1b9dcdf638aa",
+      "content": "E2E ?????? 1775928654260",
+      "createdAt": "2026-04-11T17:31:02.874Z",
+      "replyContent": "",
+      "replyByUserId": "",
+      "repliedAt": null,
+      "readByUserId": "",
+      "readAt": null
+    },
+    {
+      "id": "remark-ea36d137-aeaa-4b75-8dd8-e2afae24a17c",
+      "projectId": "project-sh-1",
+      "updateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "historySessionId": null,
+      "historyQuestionId": null,
+      "fromUserId": "user-wang-chao",
+      "toUserId": "user-li-wei",
+      "content": "E2E-1776014750594",
+      "createdAt": "2026-04-12T17:25:50.636Z",
+      "replyContent": "",
+      "replyByUserId": "",
+      "repliedAt": null,
+      "readByUserId": "",
+      "readAt": null
+    },
+    {
+      "id": "remark-f3d9bd5e-f33f-44b2-9889-853c74ce9f2e",
+      "projectId": "project-sh-1",
+      "updateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "historySessionId": null,
+      "historyQuestionId": null,
+      "fromUserId": "user-wang-chao",
+      "toUserId": "user-li-wei",
+      "content": "E2E-1776015295714",
+      "createdAt": "2026-04-12T17:34:55.745Z",
+      "replyContent": "",
+      "replyByUserId": "",
+      "repliedAt": null,
+      "readByUserId": "",
+      "readAt": null
+    },
+    {
+      "id": "remark-6a2589c9-f4a0-48be-b5a7-3b67036ed80b",
+      "projectId": "project-sh-1",
+      "updateId": "update-6da6db4d-ea2f-44cc-9b52-6fbec2bc8cd2",
+      "historySessionId": null,
+      "historyQuestionId": null,
+      "fromUserId": "user-wang-chao",
+      "toUserId": "user-li-wei",
+      "content": "E2E-UI-VERIFY-20260412190209",
+      "createdAt": "2026-04-12T19:02:16.402Z",
       "replyContent": "",
       "replyByUserId": "",
       "repliedAt": null,
@@ -546,6 +1801,306 @@
       "readAt": null
     }
   ],
-  "sessions": [],
-  "messages": []
+  "sessions": [
+    {
+      "id": "session-ade9cd0a-f4d6-4838-b443-40e79778fa4f",
+      "projectId": "project-sh-1",
+      "userId": "user-li-wei",
+      "source": "web-intake",
+      "sessionType": "intake",
+      "scenario": {
+        "operation": "submit",
+        "projectId": "project-sh-1",
+        "currentStageId": "stage-trial",
+        "currentStageName": "试用评估",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T15:09:50.475Z"
+      },
+      "closedAt": null,
+      "closedReason": "",
+      "linkedIntakeSessionId": null,
+      "extractionSource": "responses-api",
+      "createdAt": "2026-04-09T15:10:41.004Z"
+    },
+    {
+      "id": "session-deb596e4-4a84-43f0-b49a-fce2a6dca173",
+      "projectId": "project-sh-1",
+      "userId": "user-li-wei",
+      "source": "web-intake",
+      "sessionType": "intake",
+      "scenario": {
+        "operation": "submit",
+        "projectId": "project-sh-1",
+        "currentStageId": "stage-trial",
+        "currentStageName": "试用评估",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T15:59:52.593Z"
+      },
+      "closedAt": null,
+      "closedReason": "",
+      "linkedIntakeSessionId": null,
+      "extractionSource": "responses-api",
+      "createdAt": "2026-04-09T16:00:57.970Z"
+    },
+    {
+      "id": "session-7cbb1050-bf99-46c3-b22c-f4e6122ced45",
+      "projectId": "project-09e14b06-c976-4668-8be0-d1fbd0ac9aed",
+      "userId": "user-li-wei",
+      "source": "web-intake",
+      "sessionType": "intake",
+      "scenario": {
+        "operation": "submit",
+        "projectId": "project-09e14b06-c976-4668-8be0-d1fbd0ac9aed",
+        "currentStageId": "stage-target",
+        "currentStageName": "目标建档",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T16:40:15.747Z"
+      },
+      "closedAt": null,
+      "closedReason": "",
+      "linkedIntakeSessionId": null,
+      "extractionSource": "reviewed-snapshot",
+      "createdAt": "2026-04-09T16:40:15.747Z"
+    },
+    {
+      "id": "session-d1b472e1-2ed6-4040-91b2-624f9c5817d8",
+      "projectId": "project-hz-2",
+      "userId": "user-li-wei",
+      "source": "web-intake",
+      "sessionType": "intake",
+      "scenario": {
+        "operation": "submit",
+        "projectId": "project-hz-2",
+        "currentStageId": "stage-contact",
+        "currentStageName": "科室接触",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T17:45:33.618Z"
+      },
+      "closedAt": null,
+      "closedReason": "",
+      "linkedIntakeSessionId": null,
+      "extractionSource": "reviewed-snapshot",
+      "createdAt": "2026-04-09T17:45:33.621Z"
+    },
+    {
+      "id": "session-followup-e2e-1775928654260",
+      "sessionType": "followup",
+      "projectId": "project-e15cf13d-22d2-4da5-aa8a-dc6f44b97ce8",
+      "userId": "user-37675314-0690-4f7d-a5aa-1b9dcdf638aa",
+      "source": "web-followup",
+      "createdAt": "2026-04-11T17:30:59.200Z",
+      "closedAt": null,
+      "closedReason": "",
+      "linkedIntakeSessionId": null,
+      "historySourceSessionId": null,
+      "scenario": {
+        "source": "e2e-fixture",
+        "operation": "followup_generate",
+        "touchedAt": "2026-04-11T17:30:59.200Z",
+        "projectId": "project-e15cf13d-22d2-4da5-aa8a-dc6f44b97ce8"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-9b0457c5-2d36-4688-bed6-c81ca8364a32",
+      "sessionId": "session-ade9cd0a-f4d6-4838-b443-40e79778fa4f",
+      "senderType": "user",
+      "kind": "intake_note",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-sh-1",
+        "currentStageId": "stage-trial",
+        "currentStageName": "试用评估",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T15:09:50.475Z"
+      },
+      "content": "【备注回复纪要】\n关联日期：2026-04-09\n关联科室：疼痛科\n上级留言：?????????????????????????\n回复内容：\n已根据留言完成回复，并同步补充纪要。",
+      "createdAt": "2026-04-09T15:10:41.004Z"
+    },
+    {
+      "id": "message-a824f5ca-dbba-4100-abe4-4d2e1dae08e8",
+      "sessionId": "session-ade9cd0a-f4d6-4838-b443-40e79778fa4f",
+      "senderType": "assistant",
+      "kind": "intake_extraction",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-sh-1",
+        "currentStageId": "stage-trial",
+        "currentStageName": "试用评估",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T15:09:50.475Z"
+      },
+      "content": "{\"department\":\"疼痛科\",\"contacts\":[],\"feedbackSummary\":\"已根据留言完成回复，并同步补充纪要。原始上级留言内容无法识别，追问补充信息为无。\",\"blockers\":\"\",\"opportunities\":\"\",\"issues\":[],\"nextActions\":[{\"title\":\"补充并确认上级留言的具体内容，完善本次纪要关键信息\",\"assigneeName\":\"\",\"dueDate\":\"\"}],\"stageAfterUpdate\":\"试用评估\",\"managerAttentionNeeded\":false,\"nextStep\":\"联系相关人员核实上级留言原文及具体诉求后，更新试用评估进展。\"}",
+      "createdAt": "2026-04-09T15:10:41.004Z"
+    },
+    {
+      "id": "message-1d82d3da-5f8a-4824-9b37-bc64f91b5d00",
+      "sessionId": "session-deb596e4-4a84-43f0-b49a-fce2a6dca173",
+      "senderType": "user",
+      "kind": "intake_note",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-sh-1",
+        "currentStageId": "stage-trial",
+        "currentStageName": "试用评估",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T15:59:52.593Z"
+      },
+      "content": "【备注回复纪要】\n关联日期：2026-04-09\n关联科室：疼痛科\n上级留言：????????????????????????\n回复内容：\n已联系王超确认留言诉求，补充了院内采购确认和试用范围推进安排；下周三前补齐收费测算与培训材料后，再同步回复结果并继续跟进。\n\n【补充编辑】\n\n补充：本次回复需强调已对接王超，院内采购确认完成后再回传最终结果；请将试用范围确认节点更新为下周三。",
+      "createdAt": "2026-04-09T16:00:57.970Z"
+    },
+    {
+      "id": "message-279a6315-ba6b-4cb5-942a-0ca9034135fc",
+      "sessionId": "session-deb596e4-4a84-43f0-b49a-fce2a6dca173",
+      "senderType": "assistant",
+      "kind": "intake_extraction",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-sh-1",
+        "currentStageId": "stage-trial",
+        "currentStageName": "试用评估",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T15:59:52.593Z"
+      },
+      "content": "{\"department\":\"疼痛科\",\"contacts\":[{\"name\":\"王超\",\"role\":\"\"}],\"feedbackSummary\":\"已联系王超确认留言诉求，补充了院内采购确认和试用范围推进安排；需强调已对接王超，待院内采购确认完成后再回传最终结果。试用范围确认节点更新为下周三，补齐收费测算与培训材料后同步回复并继续跟进。\",\"blockers\":\"院内采购确认完成前无法回传最终结果。\",\"opportunities\":\"已对接关键联系人王超，可借助本次采购确认与试用范围推进，推动试用评估继续向前。\",\"issues\":[\"收费\",\"培训\",\"采购流程\"],\"nextActions\":[{\"title\":\"补齐收费测算材料\",\"assigneeName\":\"\",\"dueDate\":\"2026-04-15\"},{\"title\":\"补齐培训材料\",\"assigneeName\":\"\",\"dueDate\":\"2026-04-15\"},{\"title\":\"更新并确认试用范围节点\",\"assigneeName\":\"\",\"dueDate\":\"2026-04-15\"},{\"title\":\"待院内采购确认完成后回传最终结果并继续跟进\",\"assigneeName\":\"\",\"dueDate\":\"\"}],\"stageAfterUpdate\":\"试用评估\",\"managerAttentionNeeded\":false,\"nextStep\":\"下周三前补齐收费测算与培训材料，并完成试用范围确认；待院内采购确认完成后同步回复最终结果。\"}",
+      "createdAt": "2026-04-09T16:00:57.970Z"
+    },
+    {
+      "id": "message-36873f99-d968-49c3-9345-64989b6b5b72",
+      "sessionId": "session-7cbb1050-bf99-46c3-b22c-f4e6122ced45",
+      "senderType": "user",
+      "kind": "intake_note",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-09e14b06-c976-4668-8be0-d1fbd0ac9aed",
+        "currentStageId": "stage-target",
+        "currentStageName": "目标建档",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T16:40:15.747Z"
+      },
+      "content": "P2 integration test note",
+      "createdAt": "2026-04-09T16:40:15.747Z"
+    },
+    {
+      "id": "message-71b95991-f3e6-406c-971e-5ecad3db36ad",
+      "sessionId": "session-7cbb1050-bf99-46c3-b22c-f4e6122ced45",
+      "senderType": "assistant",
+      "kind": "intake_extraction",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-09e14b06-c976-4668-8be0-d1fbd0ac9aed",
+        "currentStageId": "stage-target",
+        "currentStageName": "目标建档",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T16:40:15.747Z"
+      },
+      "content": "{\"department\":\"????\",\"contacts\":[],\"feedbackSummary\":\"P2 integration test: submit reviewed snapshot with all next actions cancelled.\",\"blockers\":\"\",\"opportunities\":\"\",\"issues\":[],\"nextActions\":[],\"stageAfterUpdate\":\"目标建档\",\"managerAttentionNeeded\":false,\"nextStep\":\"\"}",
+      "createdAt": "2026-04-09T16:40:15.747Z"
+    },
+    {
+      "id": "message-5c183cfd-8c0b-4e37-80d4-26e529fa2124",
+      "sessionId": "session-d1b472e1-2ed6-4040-91b2-624f9c5817d8",
+      "senderType": "user",
+      "kind": "intake_note",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-hz-2",
+        "currentStageId": "stage-contact",
+        "currentStageName": "科室接触",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T17:45:33.618Z"
+      },
+      "content": "今天到杭州市第二人民医院神经内科与护理部沟通，确认系统上线后先覆盖门诊随访录入。对方要求先完善病区联系人和门诊路径，当前有两个待处理事项：1. 补充神经内科主任联系方式；2. 安排下周二与信息科确认对接人。运营要求先整理科室联系人清单，再提交阶段更新。",
+      "createdAt": "2026-04-09T17:45:33.621Z"
+    },
+    {
+      "id": "message-e8c417f3-866d-48b5-a618-e0d8c1cd3656",
+      "sessionId": "session-d1b472e1-2ed6-4040-91b2-624f9c5817d8",
+      "senderType": "assistant",
+      "kind": "intake_extraction",
+      "round": 0,
+      "questionStatus": null,
+      "relatedMessageId": null,
+      "scenarioSnapshot": {
+        "operation": "submit",
+        "projectId": "project-hz-2",
+        "currentStageId": "stage-contact",
+        "currentStageName": "科室接触",
+        "activeTab": "entry",
+        "templateId": "",
+        "recordedAt": "2026-04-09T17:45:33.618Z"
+      },
+      "content": "{\"department\":\"神经内科、护理部\",\"contacts\":[],\"feedbackSummary\":\"与杭州市第二人民医院神经内科及护理部沟通，确认系统上线后先覆盖门诊随访录入。院方要求先完善病区联系人和门诊路径。当前待补充神经内科主任联系方式，并安排下周二与信息科确认对接人。运营要求先整理科室联系人清单，再提交阶段更新。\",\"blockers\":\"\",\"opportunities\":\"系统上线后可先从门诊随访录入场景切入，逐步推进院内落地。\",\"issues\":[\"院内协同\",\"使用流程\",\"科室支持\"],\"nextActions\":[],\"stageAfterUpdate\":\"科室接触\",\"managerAttentionNeeded\":false,\"nextStep\":\"\"}",
+      "createdAt": "2026-04-09T17:45:33.621Z"
+    },
+    {
+      "id": "msg-followup-seed-e2e-1775928654260",
+      "sessionId": "session-followup-e2e-1775928654260",
+      "kind": "followup_seed",
+      "content": "E2E ???? 1775928654260",
+      "createdAt": "2026-04-11T17:30:59.200Z",
+      "scenarioSnapshot": {
+        "source": "e2e-fixture"
+      }
+    },
+    {
+      "id": "msg-followup-question-e2e-1775928654260",
+      "sessionId": "session-followup-e2e-1775928654260",
+      "kind": "followup_question",
+      "round": 1,
+      "content": "?????????????????",
+      "questionStatus": "answered",
+      "createdAt": "2026-04-11T17:30:59.200Z",
+      "scenarioSnapshot": {
+        "source": "e2e-fixture"
+      }
+    },
+    {
+      "id": "msg-followup-answer-e2e-1775928654260",
+      "sessionId": "session-followup-e2e-1775928654260",
+      "kind": "followup_answer",
+      "relatedMessageId": "msg-followup-question-e2e-1775928654260",
+      "userId": "user-37675314-0690-4f7d-a5aa-1b9dcdf638aa",
+      "submittedByUserId": "user-37675314-0690-4f7d-a5aa-1b9dcdf638aa",
+      "submittedByUserName": "E2E??1775928654260",
+      "content": "??? e2e ???? 1775928654260",
+      "createdAt": "2026-04-11T17:30:59.200Z",
+      "scenarioSnapshot": {
+        "source": "e2e-fixture"
+      }
+    }
+  ]
 }

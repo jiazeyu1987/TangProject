@@ -13,6 +13,102 @@ import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
 import express from "express";
+import {
+  normalizeBackupPolicy as normalizeBackupPolicyWithDefaults,
+  normalizeBackupScheduleInput as normalizeBackupScheduleInputWithDefaults,
+  resolveNextBackupRunAt,
+} from "./server/modules/backup-schedule-utils.js";
+import {
+  buildBackupItem as buildBackupItemInStorage,
+  createStoreBackup as createStoreBackupInStorage,
+  listBackupFileNames as listBackupFileNamesInStorage,
+  listStoreBackups as listStoreBackupsInStorage,
+  pruneBackups as pruneBackupsInStorage,
+  resolveBackupFilePath as resolveBackupFilePathInStorage,
+  resolveBackupTrigger as resolveBackupTriggerInStorage,
+} from "./server/modules/backup-storage-utils.js";
+import {
+  restoreStoreBackupByDate as restoreStoreBackupByDateInModule,
+  restoreStoreBackupFromId as restoreStoreBackupFromIdInModule,
+} from "./server/modules/backup-restore-utils.js";
+import {
+  buildBackupPayload as buildBackupPayloadInModule,
+  initializeBackupSystem as initializeBackupSystemInModule,
+  runScheduledBackup as runScheduledBackupInModule,
+  scheduleNextBackupRun as scheduleNextBackupRunInModule,
+} from "./server/modules/backup-orchestrator-utils.js";
+import { buildBootstrapPayloadView } from "./server/modules/bootstrap-payload-utils.js";
+import {
+  buildDashboardMetrics as buildDashboardMetricsInModule,
+  buildSignalsPayload as buildSignalsPayloadInModule,
+} from "./server/modules/dashboard-signal-utils.js";
+import { buildHealthPayloadView } from "./server/modules/health-payload-utils.js";
+import { buildManagementPayloadView } from "./server/modules/management-payload-utils.js";
+import {
+  buildProjectCollections as buildProjectCollectionsInModule,
+  buildProjectMetrics as buildProjectMetricsInModule,
+} from "./server/modules/project-view-aggregator-utils.js";
+import {
+  buildTaskViewEntity as buildTaskViewEntityInModule,
+  buildUpdateViewEntity as buildUpdateViewEntityInModule,
+} from "./server/modules/entity-view-utils.js";
+import {
+  buildContactViewEntity as buildContactViewEntityInModule,
+  buildProjectRemarkViewEntity as buildProjectRemarkViewEntityInModule,
+  buildUserViewEntity as buildUserViewEntityInModule,
+} from "./server/modules/support-view-utils.js";
+import {
+  normalizeScenarioForStorageView as normalizeScenarioForStorageViewInModule,
+  parseScenarioPayloadInput as parseScenarioPayloadInputInModule,
+} from "./server/modules/scenario-utils.js";
+import {
+  buildFollowupHistoryPayloadView as buildFollowupHistoryPayloadInModule,
+  buildFollowupHistoryDetailedView as buildFollowupHistoryDetailedViewInModule,
+  buildFollowupHistorySessionsForProjectView as buildFollowupHistorySessionsForProjectInModule,
+  buildFollowupHistorySessionSummary as buildFollowupHistorySessionSummaryInModule,
+  buildFollowupHistoryView as buildFollowupHistoryViewInModule,
+  buildFollowupQuestionViewModel as buildFollowupQuestionViewModelInModule,
+  findPendingFollowupQuestionsForSession as findPendingFollowupQuestionsForSessionInModule,
+} from "./server/modules/followup-history-view-utils.js";
+import { handleFollowupHistoryRequestView as handleFollowupHistoryRequestInModule } from "./server/modules/followup-history-handler-utils.js";
+import { handleFollowupQuestionRequestView as handleFollowupQuestionRequestInModule } from "./server/modules/followup-question-handler-utils.js";
+import {
+  buildFollowupPromptView as buildFollowupPromptInModule,
+  normalizeFollowupQuestionsPayloadView as normalizeFollowupQuestionsPayloadInModule,
+} from "./server/modules/followup-question-utils.js";
+import { answerFollowupQuestionsBatchView as answerFollowupQuestionsBatchInModule } from "./server/modules/followup-answer-utils.js";
+import { closeFollowupSessionOnSubmitView as closeFollowupSessionOnSubmitInModule } from "./server/modules/followup-session-utils.js";
+import {
+  createFollowupQuestionsView as createFollowupQuestionsInModule,
+  createFollowupSessionView as createFollowupSessionInModule,
+} from "./server/modules/followup-create-utils.js";
+import { buildFollowupContextForExtractionView as buildFollowupContextForExtractionInModule } from "./server/modules/followup-context-utils.js";
+import {
+  normalizeFollowupAnswerItems as normalizeFollowupAnswerItemsInModule,
+  parseFollowupBatchAnswerRouteInput as parseFollowupBatchAnswerRouteInputInModule,
+  parseFollowupHistoryRouteInput as parseFollowupHistoryRouteInputInModule,
+  parseFollowupQuestionRouteInput as parseFollowupQuestionRouteInputInModule,
+  parseFollowupSingleAnswerRouteInput as parseFollowupSingleAnswerRouteInputInModule,
+} from "./server/modules/followup-route-validation-utils.js";
+import {
+  buildFollowupItemsForBatchAnswer as buildFollowupItemsForBatchAnswerInModule,
+  resolveFollowupQuestionForSingleAnswer as resolveFollowupQuestionForSingleAnswerInModule,
+} from "./server/modules/followup-question-lookup-utils.js";
+import {
+  assertHistorySessionValidForQuestionRoute as assertHistorySessionValidForQuestionRouteInModule,
+  resolveFollowupAnswerAccessContext as resolveFollowupAnswerAccessContextInModule,
+  resolveFollowupProjectForQuestionRoute as resolveFollowupProjectForQuestionRouteInModule,
+  resolveFollowupSessionForProjectAction as resolveFollowupSessionForProjectActionInModule,
+  resolveFollowupSessionForQuestionRoute as resolveFollowupSessionForQuestionRouteInModule,
+} from "./server/modules/followup-access-utils.js";
+import { resolveIntakeRouteContextView as resolveIntakeRouteContextInModule } from "./server/modules/intake-route-utils.js";
+import {
+  collectAccessibleUserIdsByRole as collectAccessibleUserIdsByRoleInModule,
+  buildProjectViewsForVisibleIds as buildProjectViewsForVisibleIdsInModule,
+  buildTaskViewsForVisibleIds as buildTaskViewsForVisibleIdsInModule,
+  canUserAccessProjectByRole as canUserAccessProjectByRoleInModule,
+  collectVisibleProjectIdsByAccess as collectVisibleProjectIdsByAccessInModule,
+} from "./server/modules/visibility-view-utils.js";
 
 dotenv.config({ quiet: true });
 
@@ -44,6 +140,8 @@ const responsesMaxConcurrentRequests = toPositiveInteger(
   process.env.RESPONSES_MAX_CONCURRENT_REQUESTS,
   2,
 );
+const simulationMode = isTruthyEnvValue(process.env.SIMULATION_MODE);
+const simulationClockFile = simulationMode ? asString(process.env.SIMULATION_CLOCK_FILE).trim() : "";
 const ROLE_DEFINITIONS = {
   manager: { code: "manager", name: "经理", rank: 3 },
   supervisor: { code: "supervisor", name: "主管", rank: 2 },
@@ -60,6 +158,12 @@ const responsesRequestQueue = [];
 const responsesLimiterState = {
   activeCount: 0,
 };
+const businessClock = createBusinessClock({
+  simulationMode,
+  clockFile: simulationClockFile,
+});
+
+businessClock.assertReady();
 
 let store = loadOrCreateStore();
 const backupSchedulerState = {
@@ -136,6 +240,17 @@ app.post("/api/auth/register", (req, res) => {
     account,
     role,
     regionId,
+    supervisorUserId: resolveSupervisorAssignmentForUser({
+      user: {
+        id: "",
+        role,
+        regionId,
+      },
+      users: store.users,
+      regionId,
+      requestedSupervisorUserId: req.body?.supervisorUserId,
+      allowImplicitRegionAssignment: true,
+    }),
     passwordSalt,
     passwordHash: hashPassword(password, passwordSalt),
     createdAt: nowIso(),
@@ -332,6 +447,8 @@ app.patch("/api/users/:userId", (req, res) => {
   }
   const userId = asString(req.params?.userId);
   const regionId = asString(req.body?.regionId);
+  const hasSupervisorUserId = Boolean(req.body && Object.prototype.hasOwnProperty.call(req.body, "supervisorUserId"));
+  const supervisorUserId = hasSupervisorUserId ? asString(req.body?.supervisorUserId) : undefined;
   if (!userId) {
     res.status(400).json({ error: "userId is required." });
     return;
@@ -351,7 +468,25 @@ app.patch("/api/users/:userId", (req, res) => {
     return;
   }
 
-  user.regionId = region.id;
+  try {
+    const nextSupervisorUserId = resolveSupervisorAssignmentForUser({
+      user,
+      users: store.users,
+      regionId: region.id,
+      requestedSupervisorUserId: supervisorUserId,
+      allowImplicitRegionAssignment: false,
+    });
+    ensureSupervisorRegionChangeDoesNotBreakAssignments({
+      user,
+      users: store.users,
+      regionId: region.id,
+    });
+    user.regionId = region.id;
+    user.supervisorUserId = nextSupervisorUserId;
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "user payload is invalid." });
+    return;
+  }
   touchStore();
   persistStore();
 
@@ -364,16 +499,27 @@ app.patch("/api/users/:userId", (req, res) => {
 
 app.patch("/api/tasks/:taskId", (req, res) => {
   const task = store.tasks.find((item) => item.id === req.params.taskId);
-  const taskStatus = asString(req.body?.taskStatus);
   const allowed = new Set(["todo", "in_progress", "blocked", "completed"]);
+  const hasTaskStatus = Boolean(req.body && Object.prototype.hasOwnProperty.call(req.body, "taskStatus"));
+  const hasDueDate = Boolean(req.body && Object.prototype.hasOwnProperty.call(req.body, "dueDate"));
+  const taskStatus = hasTaskStatus ? asString(req.body?.taskStatus) : "";
+  const dueDate = hasDueDate ? normalizeDateOnly(req.body?.dueDate) : "";
 
   if (!task) {
     res.status(404).json({ error: "Task not found." });
     return;
   }
 
-  if (!allowed.has(taskStatus)) {
+  if (!hasTaskStatus && !hasDueDate) {
+    res.status(400).json({ error: "At least one task update field is required." });
+    return;
+  }
+  if (hasTaskStatus && !allowed.has(taskStatus)) {
     res.status(400).json({ error: "taskStatus is invalid." });
+    return;
+  }
+  if (hasDueDate && !dueDate) {
+    res.status(400).json({ error: "dueDate must be a valid YYYY-MM-DD string." });
     return;
   }
   const project = getProjectById(task.projectId);
@@ -386,8 +532,34 @@ app.patch("/api/tasks/:taskId", (req, res) => {
     return;
   }
 
-  task.status = taskStatus;
-  task.completedAt = taskStatus === "completed" ? nowIso() : null;
+  if (hasTaskStatus) {
+    const previousStatus = task.status;
+    task.status = taskStatus;
+    if (taskStatus === "completed") {
+      task.completedAt = previousStatus === "completed" && task.completedAt ? task.completedAt : nowIso();
+    } else {
+      task.completedAt = null;
+    }
+  }
+  if (hasDueDate) {
+    const previousDueAt = asString(task.dueAt) || null;
+    const nextDueAt = buildTaskDueAtFromDateOnly(dueDate);
+    if (previousDueAt !== nextDueAt) {
+      ensureTaskDueDateHistory(task).push({
+        id: createId("task-due"),
+        previousDueAt,
+        nextDueAt,
+        changedAt: nowIso(),
+        changedByUserId: req.currentUser.id,
+      });
+      if (!task.initialDueAt) {
+        task.initialDueAt = nextDueAt;
+      }
+      task.dueAt = nextDueAt;
+    } else if (!task.initialDueAt) {
+      task.initialDueAt = nextDueAt;
+    }
+  }
   touchStore();
   persistStore();
 
@@ -398,8 +570,110 @@ app.patch("/api/tasks/:taskId", (req, res) => {
   });
 });
 
+app.post("/api/tasks/:taskId/records", (req, res) => {
+  const task = store.tasks.find((item) => item.id === req.params.taskId);
+  const content = clipText(asString(req.body?.content), 1000);
+
+  if (!task) {
+    res.status(404).json({ error: "Task not found." });
+    return;
+  }
+  if (!content) {
+    res.status(400).json({ error: "content is required." });
+    return;
+  }
+
+  const project = getProjectById(task.projectId);
+  if (!project) {
+    res.status(404).json({ error: "Project for task not found." });
+    return;
+  }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to update this task." });
+    return;
+  }
+
+  ensureTaskRecords(task).push({
+    id: createId("task-record"),
+    content,
+    createdAt: nowIso(),
+    createdByUserId: req.currentUser.id,
+  });
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    task: buildTaskView(task),
+    bootstrap: buildBootstrapPayload(req.currentUser),
+  });
+});
+
+app.patch("/api/projects/:projectId/contacts", (req, res) => {
+  const projectId = asString(req.params?.projectId);
+  const rawContacts = req.body?.contacts;
+  const rawOriginalContacts = req.body?.originalContacts;
+  const rawMergeActions = req.body?.mergeActions;
+  const project = getProjectById(projectId);
+
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required." });
+    return;
+  }
+  if (!project) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+  if (!canUserAccessProject(req.currentUser, project)) {
+    res.status(403).json({ error: "Current user is not allowed to update contacts for this project." });
+    return;
+  }
+  if (!Array.isArray(rawContacts)) {
+    res.status(400).json({ error: "contacts must be an array." });
+    return;
+  }
+
+  let contacts;
+  let originalContacts;
+  let mergeActions;
+  try {
+    contacts = normalizeEditableContacts(rawContacts);
+    originalContacts = normalizeEditableOriginalContacts(rawOriginalContacts);
+    mergeActions = normalizeEditableContactMergeActions(rawMergeActions);
+    validateEditableContactMergeActions({
+      mergeActions,
+      contacts,
+      originalContacts,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "contacts payload is invalid." });
+    return;
+  }
+
+  const resolvedContacts = replaceHospitalContacts({
+    hospitalId: project.hospitalId,
+    contacts,
+    touchedAt: nowIso(),
+  });
+  applyProjectContactPropagation({
+    project,
+    originalContacts,
+    contacts: resolvedContacts,
+    mergeActions,
+  });
+  touchStore();
+  persistStore();
+
+  res.json({
+    ok: true,
+    project: buildProjectView(project),
+    bootstrap: buildBootstrapPayload(req.currentUser),
+  });
+});
+
 app.post("/api/projects", (req, res) => {
   const hospitalName = clipText(asString(req.body?.hospitalName), 120);
+  const departmentName = clipText(asString(req.body?.departmentName), 80);
   const city = clipText(asString(req.body?.city), 40);
   const hospitalLevel = clipText(asString(req.body?.hospitalLevel), 20) || "未知";
   const currentUser = req.currentUser;
@@ -442,6 +716,8 @@ app.post("/api/projects", (req, res) => {
   };
   store.hospitals.push(hospital);
 
+  const initialDepartmentId = departmentName ? ensureDepartment(hospital.id, departmentName) : "";
+
   const project = {
     id: createId("project"),
     hospitalId: hospital.id,
@@ -456,6 +732,7 @@ app.post("/api/projects", (req, res) => {
     latestSummary: "新建医院项目，待录入首次纪要。",
     currentIssueTagIds: [],
     latestUpdateId: null,
+    initialDepartmentId,
   };
   store.projects.push(project);
 
@@ -475,6 +752,8 @@ app.post("/api/projects/:projectId/remarks", (req, res) => {
   const content = clipText(asString(req.body?.content), 300);
   const toUserId = asString(req.body?.toUserId);
   const updateId = asString(req.body?.updateId);
+  const historySessionId = asString(req.body?.historySessionId);
+  const historyQuestionId = asString(req.body?.historyQuestionId);
   const currentUser = req.currentUser;
   const project = getProjectById(projectId);
 
@@ -502,6 +781,26 @@ app.post("/api/projects/:projectId/remarks", (req, res) => {
     res.status(400).json({ error: "content is required." });
     return;
   }
+  if ((historySessionId && !historyQuestionId) || (!historySessionId && historyQuestionId)) {
+    res.status(400).json({ error: "historySessionId and historyQuestionId must be provided together." });
+    return;
+  }
+
+  if (historySessionId) {
+    const historySession = getFollowupSessionById(historySessionId);
+    if (!historySession || historySession.projectId !== project.id) {
+      res.status(400).json({ error: "historySessionId is invalid for this project." });
+      return;
+    }
+    const historyQuestionMessage = store.messages.find(
+      (item) =>
+        item.id === historyQuestionId && item.sessionId === historySession.id && item.kind === "followup_question",
+    );
+    if (!historyQuestionMessage) {
+      res.status(400).json({ error: "historyQuestionId is invalid for this history session." });
+      return;
+    }
+  }
 
   const targetUserId = toUserId || project.ownerUserId;
   const targetUser = getUserById(targetUserId);
@@ -521,6 +820,8 @@ app.post("/api/projects/:projectId/remarks", (req, res) => {
     id: createId("remark"),
     projectId: project.id,
     updateId: updateId || null,
+    historySessionId: historySessionId || null,
+    historyQuestionId: historyQuestionId || null,
     fromUserId: currentUser.id,
     toUserId: targetUser.id,
     content,
@@ -657,509 +958,163 @@ app.post("/api/project-remarks/:remarkId/read", (req, res) => {
 });
 
 app.post("/api/followups/question", async (req, res) => {
-  const projectId = asString(req.body?.projectId);
-  const note = asString(req.body?.note);
-  const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
-  const sessionId = asString(req.body?.sessionId);
-  const historySessionId = asString(req.body?.historySessionId);
-  const scenario = parseScenarioPayload(req.body?.scenario);
-  const project = store.projects.find((item) => item.id === projectId);
-
-  if (!projectId) {
-    res.status(400).json({ error: "projectId is required." });
+  const result = await handleFollowupQuestionRequest({ req, res });
+  if (!result) {
     return;
   }
-  if (!note) {
-    res.status(400).json({ error: "note is required." });
-    return;
-  }
-  if (!scenario) {
-    res.status(400).json({ error: "scenario is required." });
-    return;
-  }
-  if (!project) {
-    res.status(404).json({ error: "Project not found." });
-    return;
-  }
-  if (!canUserAccessProject(req.currentUser, project)) {
-    res.status(403).json({ error: "Current user is not allowed to access this project." });
-    return;
-  }
-
-  let followupSession;
-  if (sessionId) {
-    followupSession = getFollowupSessionById(sessionId);
-    if (!followupSession) {
-      res.status(404).json({ error: "Follow-up session not found." });
-      return;
-    }
-    if (followupSession.projectId !== projectId) {
-      res.status(400).json({ error: "Follow-up session does not belong to the project." });
-      return;
-    }
-    if (followupSession.closedAt) {
-      res.status(400).json({ error: "Follow-up session has been closed." });
-      return;
-    }
-    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
-      res.status(403).json({ error: "Current user is not allowed to access this follow-up session." });
-      return;
-    }
-  } else {
-    followupSession = null;
-  }
-
-  if (historySessionId) {
-    const historySourceSession = getFollowupSessionById(historySessionId);
-    if (!historySourceSession) {
-      res.status(404).json({ error: "History follow-up session not found." });
-      return;
-    }
-    if (historySourceSession.projectId !== projectId) {
-      res.status(400).json({ error: "History follow-up session does not belong to the project." });
-      return;
-    }
-  }
-
-  try {
-    const result = await createFollowupQuestions({
-      session: followupSession,
-      project,
-      note,
-      visitDate,
-      historySessionId: followupSession ? "" : historySessionId,
-      scenario,
-      source: "web-followup",
-      currentUser: req.currentUser,
-      minQuestions: 1,
-      maxQuestions: 1,
-    });
-    res.json({
-      ok: true,
-      sessionId: result.sessionId,
-      question: result.questions[0] || null,
-      history: result.history,
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Failed to generate follow-up question.",
-    });
-  }
+  res.json({
+    ok: true,
+    sessionId: result.sessionId,
+    question: result.questions[0] || null,
+    history: result.history,
+  });
 });
 
 app.post("/api/followups/questions", async (req, res) => {
-  const projectId = asString(req.body?.projectId);
-  const note = asString(req.body?.note);
-  const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
-  const sessionId = asString(req.body?.sessionId);
-  const historySessionId = asString(req.body?.historySessionId);
-  const scenario = parseScenarioPayload(req.body?.scenario);
-  const project = store.projects.find((item) => item.id === projectId);
-
-  if (!projectId) {
-    res.status(400).json({ error: "projectId is required." });
+  const result = await handleFollowupQuestionRequest({ req, res });
+  if (!result) {
     return;
   }
-  if (!note) {
-    res.status(400).json({ error: "note is required." });
-    return;
-  }
-  if (!scenario) {
-    res.status(400).json({ error: "scenario is required." });
-    return;
-  }
-  if (!project) {
-    res.status(404).json({ error: "Project not found." });
-    return;
-  }
-  if (!canUserAccessProject(req.currentUser, project)) {
-    res.status(403).json({ error: "Current user is not allowed to access this project." });
-    return;
-  }
-
-  let followupSession;
-  if (sessionId) {
-    followupSession = getFollowupSessionById(sessionId);
-    if (!followupSession) {
-      res.status(404).json({ error: "Follow-up session not found." });
-      return;
-    }
-    if (followupSession.projectId !== projectId) {
-      res.status(400).json({ error: "Follow-up session does not belong to the project." });
-      return;
-    }
-    if (followupSession.closedAt) {
-      res.status(400).json({ error: "Follow-up session has been closed." });
-      return;
-    }
-    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
-      res.status(403).json({ error: "Current user is not allowed to access this follow-up session." });
-      return;
-    }
-  } else {
-    followupSession = null;
-  }
-
-  if (historySessionId) {
-    const historySourceSession = getFollowupSessionById(historySessionId);
-    if (!historySourceSession) {
-      res.status(404).json({ error: "History follow-up session not found." });
-      return;
-    }
-    if (historySourceSession.projectId !== projectId) {
-      res.status(400).json({ error: "History follow-up session does not belong to the project." });
-      return;
-    }
-  }
-
-  try {
-    const result = await createFollowupQuestions({
-      session: followupSession,
-      project,
-      note,
-      visitDate,
-      historySessionId: followupSession ? "" : historySessionId,
-      scenario,
-      source: "web-followup",
-      currentUser: req.currentUser,
-      minQuestions: 1,
-      maxQuestions: 1,
-    });
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Failed to generate follow-up question.",
-    });
-  }
+  res.json(result);
 });
 
 app.get("/api/followups/history", (req, res) => {
-  const projectId = asString(req.query?.projectId);
-  const limitRaw = Number.parseInt(asString(req.query?.limit), 10);
-  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 50;
-
-  if (!projectId) {
-    res.status(400).json({ error: "projectId is required." });
+  const result = handleFollowupHistoryRequest({ req, res });
+  if (!result) {
     return;
   }
-  const project = getProjectById(projectId);
-  if (!project) {
-    res.status(404).json({ error: "Project not found." });
-    return;
-  }
-  if (!canUserAccessProject(req.currentUser, project)) {
-    res.status(403).json({ error: "Current user is not allowed to access this project." });
-    return;
-  }
-
-  const sessions = store.sessions
-    .filter((item) => item.sessionType === "followup" && item.projectId === projectId)
-    .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt))
-    .slice(0, limit)
-    .map((item) => buildFollowupHistorySessionView(item));
-
-  res.json({
-    ok: true,
-    projectId,
-    generatedAt: nowIso(),
-    sessions,
-  });
+  res.json(result);
 });
 
 app.post("/api/followups/answer", (req, res) => {
-  const sessionId = asString(req.body?.sessionId);
-  const questionMessageId = asString(req.body?.questionMessageId);
-  const answer = asString(req.body?.answer);
-  const scenario = parseScenarioPayload(req.body?.scenario);
-
-  if (!sessionId) {
-    res.status(400).json({ error: "sessionId is required." });
-    return;
-  }
-  if (!questionMessageId) {
-    res.status(400).json({ error: "questionMessageId is required." });
-    return;
-  }
-  if (!answer) {
-    res.status(400).json({ error: "answer is required." });
-    return;
-  }
-  if (!scenario) {
-    res.status(400).json({ error: "scenario is required." });
-    return;
-  }
-
-  const session = getFollowupSessionById(sessionId);
-  if (!session) {
-    res.status(404).json({ error: "Follow-up session not found." });
-    return;
-  }
-  if (session.closedAt) {
-    res.status(400).json({ error: "Follow-up session has been closed." });
-    return;
-  }
-  if (session.userId && session.userId !== req.currentUser.id) {
-    res.status(403).json({ error: "Current user is not allowed to answer this follow-up session." });
-    return;
-  }
-  const followupProject = getProjectById(session.projectId);
-  if (!followupProject || !canUserAccessProject(req.currentUser, followupProject)) {
-    res.status(403).json({ error: "Current user is not allowed to access this follow-up project." });
-    return;
-  }
-
-  const questionMessage = store.messages.find(
-    (item) =>
-      item.id === questionMessageId &&
-      item.sessionId === sessionId &&
-      item.kind === "followup_question",
-  );
-  if (!questionMessage) {
-    res.status(404).json({ error: "Follow-up question not found." });
-    return;
-  }
-  if (questionMessage.questionStatus !== "pending_answer") {
-    res.status(400).json({ error: "The follow-up question is not waiting for an answer." });
-    return;
-  }
-
-  const result = answerFollowupQuestion({
-    session,
-    questionMessage,
-    answer,
-    scenario,
-    actorUser: req.currentUser,
+  const result = handleFollowupAnswerRequest({
+    req,
+    res,
+    mode: "single",
   });
+  if (!result) {
+    return;
+  }
   res.json(result);
 });
 
 app.post("/api/followups/answers", (req, res) => {
-  const sessionId = asString(req.body?.sessionId);
-  const scenario = parseScenarioPayload(req.body?.scenario);
-  const answersRaw = Array.isArray(req.body?.answers) ? req.body.answers : null;
-
-  if (!sessionId) {
-    res.status(400).json({ error: "sessionId is required." });
-    return;
-  }
-  if (!answersRaw || !answersRaw.length) {
-    res.status(400).json({ error: "answers is required and must be a non-empty array." });
-    return;
-  }
-  if (!scenario) {
-    res.status(400).json({ error: "scenario is required." });
-    return;
-  }
-
-  const session = getFollowupSessionById(sessionId);
-  if (!session) {
-    res.status(404).json({ error: "Follow-up session not found." });
-    return;
-  }
-  if (session.closedAt) {
-    res.status(400).json({ error: "Follow-up session has been closed." });
-    return;
-  }
-  if (session.userId && session.userId !== req.currentUser.id) {
-    res.status(403).json({ error: "Current user is not allowed to answer this follow-up session." });
-    return;
-  }
-  const followupProject = getProjectById(session.projectId);
-  if (!followupProject || !canUserAccessProject(req.currentUser, followupProject)) {
-    res.status(403).json({ error: "Current user is not allowed to access this follow-up project." });
-    return;
-  }
-
-  const normalizedAnswers = answersRaw.map((item) => ({
-    questionMessageId: asString(item?.questionMessageId),
-    answer: asString(item?.answer),
-  }));
-  if (normalizedAnswers.some((item) => !item.questionMessageId || !item.answer)) {
-    res.status(400).json({
-      error: "Each answers item must include questionMessageId and answer.",
-    });
-    return;
-  }
-
-  const uniqueQuestionIds = new Set(normalizedAnswers.map((item) => item.questionMessageId));
-  if (uniqueQuestionIds.size !== normalizedAnswers.length) {
-    res.status(400).json({ error: "answers contains duplicated questionMessageId." });
-    return;
-  }
-
-  const items = [];
-  for (const item of normalizedAnswers) {
-    const questionMessage = store.messages.find(
-      (message) =>
-        message.id === item.questionMessageId &&
-        message.sessionId === sessionId &&
-        message.kind === "followup_question",
-    );
-    if (!questionMessage) {
-      res.status(404).json({ error: `Follow-up question not found: ${item.questionMessageId}` });
-      return;
-    }
-    if (questionMessage.questionStatus !== "pending_answer") {
-      res.status(400).json({
-        error: `The follow-up question is not waiting for an answer: ${item.questionMessageId}`,
-      });
-      return;
-    }
-    items.push({
-      questionMessage,
-      answer: item.answer,
-    });
-  }
-
-  const result = answerFollowupQuestionsBatch({
-    session,
-    items,
-    scenario,
-    actorUser: req.currentUser,
+  const result = handleFollowupAnswerRequest({
+    req,
+    res,
+    mode: "batch",
   });
+  if (!result) {
+    return;
+  }
   res.json(result);
 });
 
 app.post("/api/intake", async (req, res) => {
-  const projectId = asString(req.body?.projectId);
-  const note = asString(req.body?.note);
-  const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
-  const followupSessionId = asString(req.body?.followupSessionId);
   const reviewedSnapshotBody = req.body?.reviewedSnapshot;
   const submitScenario = parseScenarioPayload(req.body?.submitScenario);
-  const project = store.projects.find((item) => item.id === projectId);
-
-  if (!projectId) {
-    res.status(400).json({ error: "projectId is required." });
-    return;
-  }
-
-  if (!note) {
-    res.status(400).json({ error: "note is required." });
-    return;
-  }
   if (!reviewedSnapshotBody) {
     res.status(400).json({ error: "reviewedSnapshot is required." });
     return;
   }
 
-  if (!project) {
-    res.status(404).json({ error: "Project not found." });
+  const intakeContext = executeRouteStep({
+    res,
+    fallbackStatus: 400,
+    fallbackMessage: "Intake request is invalid.",
+    action: () =>
+      resolveIntakeRouteContextInModule({
+        body: req.body,
+        currentUser: req.currentUser,
+        asString,
+        normalizeDateOnly,
+        todayDateOnly,
+        projects: store.projects,
+        canUserAccessProject,
+        resolveFollowupSessionForProjectAction: resolveFollowupSessionForProjectActionInModule,
+        getFollowupSessionById,
+        projectUnauthorizedMessage: "Current user is not allowed to submit intake for this project.",
+        followupUnauthorizedMessage: "Current user is not allowed to submit this follow-up session.",
+      }),
+  });
+  if (!intakeContext) {
     return;
   }
-  if (!canUserAccessProject(req.currentUser, project)) {
-    res.status(403).json({ error: "Current user is not allowed to submit intake for this project." });
-    return;
-  }
+  const { project, note, visitDate, departmentName, followupSession } = intakeContext;
 
-  let followupSession = null;
-  if (followupSessionId) {
-    followupSession = getFollowupSessionById(followupSessionId);
-    if (!followupSession) {
-      res.status(404).json({ error: "Follow-up session not found." });
-      return;
-    }
-    if (followupSession.projectId !== projectId) {
-      res.status(400).json({ error: "Follow-up session does not belong to the project." });
-      return;
-    }
-    if (followupSession.closedAt) {
-      res.status(400).json({ error: "Follow-up session has been closed." });
-      return;
-    }
-    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
-      res.status(403).json({ error: "Current user is not allowed to submit this follow-up session." });
-      return;
-    }
-  }
-
-  let reviewedSnapshot;
-  try {
-    reviewedSnapshot = normalizeReviewedIntakeSnapshot(reviewedSnapshotBody);
-  } catch (error) {
-    res.status(400).json({
-      error: error instanceof Error ? error.message : "reviewedSnapshot is invalid.",
-    });
+  const reviewedSnapshot = executeRouteStep({
+    res,
+    fallbackStatus: 400,
+    fallbackMessage: "reviewedSnapshot is invalid.",
+    action: () => normalizeReviewedIntakeSnapshot(reviewedSnapshotBody),
+  });
+  if (!reviewedSnapshot) {
     return;
   }
 
-  try {
-    const result = await processIntake({
-      project,
-      note,
-      visitDate,
-      followupSession,
-      submitScenario,
-      currentUser: req.currentUser,
-      reviewedSnapshot,
-    });
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Failed to process intake.",
-    });
+  const result = await executeRouteStepAsync({
+    res,
+    fallbackStatus: 500,
+    fallbackMessage: "Failed to process intake.",
+    action: () =>
+      processIntake({
+        project,
+        note,
+        visitDate,
+        departmentName,
+        followupSession,
+        submitScenario,
+        currentUser: req.currentUser,
+        reviewedSnapshot,
+      }),
+  });
+  if (!result) {
+    return;
   }
+  res.json(result);
 });
 
 app.post("/api/intake/preview", async (req, res) => {
-  const projectId = asString(req.body?.projectId);
-  const note = asString(req.body?.note);
-  const visitDate = normalizeDateOnly(req.body?.visitDate) || todayDateOnly();
-  const followupSessionId = asString(req.body?.followupSessionId);
-  const project = store.projects.find((item) => item.id === projectId);
+  const intakeContext = executeRouteStep({
+    res,
+    fallbackStatus: 400,
+    fallbackMessage: "Intake preview request is invalid.",
+    action: () =>
+      resolveIntakeRouteContextInModule({
+      body: req.body,
+      currentUser: req.currentUser,
+      asString,
+      normalizeDateOnly,
+      todayDateOnly,
+      projects: store.projects,
+      canUserAccessProject,
+      resolveFollowupSessionForProjectAction: resolveFollowupSessionForProjectActionInModule,
+      getFollowupSessionById,
+      projectUnauthorizedMessage: "Current user is not allowed to preview intake for this project.",
+      followupUnauthorizedMessage: "Current user is not allowed to preview with this follow-up session.",
+    }),
+  });
+  if (!intakeContext) {
+    return;
+  }
+  const { project, note, visitDate, followupSession } = intakeContext;
 
-  if (!projectId) {
-    res.status(400).json({ error: "projectId is required." });
+  const extracted = await executeRouteStepAsync({
+    res,
+    fallbackStatus: 500,
+    fallbackMessage: "Failed to generate intake preview.",
+    action: () => extractStructuredUpdate({ project, note, visitDate, followupSession }),
+  });
+  if (!extracted) {
     return;
   }
-  if (!note) {
-    res.status(400).json({ error: "note is required." });
-    return;
-  }
-  if (!project) {
-    res.status(404).json({ error: "Project not found." });
-    return;
-  }
-  if (!canUserAccessProject(req.currentUser, project)) {
-    res.status(403).json({ error: "Current user is not allowed to preview intake for this project." });
-    return;
-  }
-
-  let followupSession = null;
-  if (followupSessionId) {
-    followupSession = getFollowupSessionById(followupSessionId);
-    if (!followupSession) {
-      res.status(404).json({ error: "Follow-up session not found." });
-      return;
-    }
-    if (followupSession.projectId !== projectId) {
-      res.status(400).json({ error: "Follow-up session does not belong to the project." });
-      return;
-    }
-    if (followupSession.closedAt) {
-      res.status(400).json({ error: "Follow-up session has been closed." });
-      return;
-    }
-    if (followupSession.userId && followupSession.userId !== req.currentUser.id) {
-      res.status(403).json({ error: "Current user is not allowed to preview with this follow-up session." });
-      return;
-    }
-  }
-
-  try {
-    const extracted = await extractStructuredUpdate({ project, note, visitDate, followupSession });
-    res.json({
-      ok: true,
-      generatedAt: nowIso(),
-      extractionSource: extracted.source,
-      extractionWarnings: extracted.warnings,
-      extraction: extracted.extraction,
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Failed to generate intake preview.",
-    });
-  }
+  res.json({
+    ok: true,
+    generatedAt: nowIso(),
+    extractionSource: extracted.source,
+    extractionWarnings: extracted.warnings,
+    extraction: extracted.extraction,
+  });
 });
 
 app.use(
@@ -1177,320 +1132,203 @@ app.listen(port, () => {
 function buildBootstrapPayload(currentUser = null) {
   const resolvedCurrentUser = currentUser || getCurrentUser();
   const visibleProjectIds = collectVisibleProjectIds(resolvedCurrentUser);
+  const visibleUserIds = collectAccessibleUserIds(resolvedCurrentUser);
   const projects = buildProjectViews(resolvedCurrentUser, visibleProjectIds);
   const tasks = buildTaskViews(resolvedCurrentUser, visibleProjectIds);
-
-  return {
-    ok: true,
-    generatedAt: nowIso(),
-    health: buildHealthPayload(),
-    currentUser: buildUserView(resolvedCurrentUser),
-    lookups: {
-      stages: [...store.stages].sort((left, right) => left.sortOrder - right.sortOrder),
-      issueTags: store.issueTags,
-      users: store.users.map((user) => buildUserView(user)),
-      regions: store.regions,
-    },
-    dashboard: buildDashboard(projects, tasks),
-    signals: buildSignals(projects, tasks, visibleProjectIds),
-    management: buildManagementPayload(resolvedCurrentUser),
-    capabilities: {
-      canManageBackups: isBackupAdminUser(resolvedCurrentUser),
-    },
+  return buildBootstrapPayloadView({
+    resolvedCurrentUser,
+    nowIso,
+    buildHealthPayload,
+    buildUserView,
+    stages: store.stages,
+    issueTags: store.issueTags,
+    users: store.users.filter((user) => visibleUserIds.has(asString(user?.id))),
+    regions: store.regions,
+    buildDashboard,
+    buildSignals,
+    buildManagementPayload,
+    isBackupAdminUser,
     projects,
     tasks,
-  };
+    visibleProjectIds,
+  });
 }
 
 function buildHealthPayload() {
   const health = getResponsesApiHealth();
   const backupSchedule = getBackupSchedule();
-  return {
-    ok: health.configured,
-    configured: health.configured,
-    authStatus: health.message,
-    extractionMode: health.configured ? "responses-api" : "unconfigured",
-    model: responsesModel,
-    baseUrl: responsesBaseUrl,
-    responsesConcurrency: {
-      maxConcurrentRequests: responsesMaxConcurrentRequests,
-      activeRequests: responsesLimiterState.activeCount,
-      queuedRequests: responsesRequestQueue.length,
-    },
-    dataStore: {
-      path: STORE_PATH,
-      projectCount: store.projects.length,
-      taskCount: store.tasks.length,
-    },
-    backup: {
-      path: BACKUP_DIR,
-      maxCount: getBackupMaxCount(),
-      frequency: backupSchedule.frequency,
-      weekday: backupSchedule.frequency === "weekly" ? backupSchedule.weekday : null,
-      scheduledAt: `${String(backupSchedule.hour).padStart(2, "0")}:${String(backupSchedule.minute).padStart(2, "0")}`,
-      lastRunAt: backupSchedulerState.lastRunAt || null,
-      nextRunAt: backupSchedulerState.nextRunAt || null,
-    },
-  };
+  return buildHealthPayloadView({
+    health,
+    responsesModel,
+    responsesBaseUrl,
+    responsesMaxConcurrentRequests,
+    activeRequests: responsesLimiterState.activeCount,
+    queuedRequests: responsesRequestQueue.length,
+    storePath: STORE_PATH,
+    projectCount: store.projects.length,
+    taskCount: store.tasks.length,
+    simulation: businessClock.describe(),
+    backupPath: BACKUP_DIR,
+    backupMaxCount: getBackupMaxCount(),
+    backupSchedule,
+    backupSchedulerState,
+  });
 }
 
 function buildBackupPayload() {
-  const backups = listStoreBackups();
-  return {
-    ok: true,
-    generatedAt: nowIso(),
+  return buildBackupPayloadInModule({
+    listStoreBackups,
+    nowIso,
     policy: store.backupPolicy,
-    scheduler: {
-      running: backupSchedulerState.running,
-      lastRunAt: backupSchedulerState.lastRunAt || null,
-      nextRunAt: backupSchedulerState.nextRunAt || null,
-    },
-    availableDates: uniqueStrings(backups.map((item) => item.date)),
-    backups,
-  };
+    schedulerState: backupSchedulerState,
+    uniqueStrings,
+  });
 }
 
 function initializeBackupSystem() {
-  mkdirSync(BACKUP_DIR, { recursive: true });
-  pruneBackups(getBackupMaxCount());
-  scheduleNextBackupRun(new Date());
+  initializeBackupSystemInModule({
+    backupDir: BACKUP_DIR,
+    mkdirSync,
+    pruneBackups,
+    getBackupMaxCount,
+    scheduleNextBackupRun,
+  });
 }
 
 function scheduleNextBackupRun(referenceDate) {
-  const nextRunAt = resolveNextBackupRunAt(referenceDate, getBackupSchedule());
-  backupSchedulerState.nextRunAt = nextRunAt.toISOString();
-  if (backupSchedulerState.timer) {
-    clearTimeout(backupSchedulerState.timer);
-  }
-  const delayMs = Math.max(1000, nextRunAt.getTime() - Date.now());
-  backupSchedulerState.timer = setTimeout(() => {
-    runScheduledBackup();
-  }, delayMs);
+  scheduleNextBackupRunInModule({
+    referenceDate,
+    resolveNextBackupRunAt,
+    getBackupSchedule,
+    schedulerState: backupSchedulerState,
+    runScheduledBackup,
+  });
 }
 
 function runScheduledBackup() {
-  backupSchedulerState.running = true;
-  try {
-    createStoreBackup("auto");
-    pruneBackups(getBackupMaxCount());
-    backupSchedulerState.lastRunAt = nowIso();
-  } catch (error) {
-    console.error("[backup] scheduled backup failed:", error instanceof Error ? error.message : error);
-  } finally {
-    backupSchedulerState.running = false;
-    scheduleNextBackupRun(new Date(Date.now() + 1000));
-  }
-}
-
-function resolveNextDailyRunAt(referenceDate, hour, minute) {
-  const reference = referenceDate instanceof Date ? referenceDate : new Date();
-  const next = new Date(reference.getTime());
-  next.setHours(hour, minute, 0, 0);
-  if (next.getTime() <= reference.getTime()) {
-    next.setDate(next.getDate() + 1);
-  }
-  return next;
-}
-
-function resolveNextWeeklyRunAt(referenceDate, hour, minute, weekday) {
-  const reference = referenceDate instanceof Date ? referenceDate : new Date();
-  const next = new Date(reference.getTime());
-  next.setHours(hour, minute, 0, 0);
-  const currentWeekday = next.getDay();
-  let dayDelta = weekday - currentWeekday;
-  if (dayDelta < 0) {
-    dayDelta += 7;
-  }
-  next.setDate(next.getDate() + dayDelta);
-  if (next.getTime() <= reference.getTime()) {
-    next.setDate(next.getDate() + 7);
-  }
-  return next;
-}
-
-function resolveNextBackupRunAt(referenceDate, schedule) {
-  if (schedule.frequency === "weekly") {
-    return resolveNextWeeklyRunAt(referenceDate, schedule.hour, schedule.minute, schedule.weekday);
-  }
-  return resolveNextDailyRunAt(referenceDate, schedule.hour, schedule.minute);
+  runScheduledBackupInModule({
+    schedulerState: backupSchedulerState,
+    createStoreBackup,
+    pruneBackups,
+    getBackupMaxCount,
+    nowIso,
+    scheduleNextBackupRun,
+    logError(error) {
+      console.error("[backup] scheduled backup failed:", error instanceof Error ? error.message : error);
+    },
+  });
 }
 
 function createStoreBackup(trigger) {
-  const normalizedTrigger = asString(trigger).toLowerCase();
-  if (!normalizedTrigger || (normalizedTrigger !== "auto" && normalizedTrigger !== "manual")) {
-    throw new Error("backup trigger is invalid.");
-  }
-  mkdirSync(BACKUP_DIR, { recursive: true });
-  const timestamp = nowIso().replace(/[-:.]/g, "");
-  const backupId = `${BACKUP_FILE_PREFIX}${timestamp}-${createId("backup")}-${normalizedTrigger}${BACKUP_FILE_SUFFIX}`;
-  const backupPath = path.join(BACKUP_DIR, backupId);
-  writeFileSync(backupPath, JSON.stringify(store, null, 2), "utf8");
-  const stat = statSync(backupPath);
-  return buildBackupItem(backupId, stat);
+  return createStoreBackupInStorage({
+    trigger,
+    backupDir: BACKUP_DIR,
+    backupFilePrefix: BACKUP_FILE_PREFIX,
+    backupFileSuffix: BACKUP_FILE_SUFFIX,
+    storeSnapshot: store,
+    createId,
+    nowIso,
+    asString,
+  });
 }
 
 function listStoreBackups() {
-  mkdirSync(BACKUP_DIR, { recursive: true });
-  return listBackupFileNames()
-    .map((fileName) => {
-      const fullPath = path.join(BACKUP_DIR, fileName);
-      try {
-        const stat = statSync(fullPath);
-        return buildBackupItem(fileName, stat);
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt));
+  return listStoreBackupsInStorage({
+    backupDir: BACKUP_DIR,
+    backupFilePrefix: BACKUP_FILE_PREFIX,
+    backupFileSuffix: BACKUP_FILE_SUFFIX,
+    compareIsoDesc,
+  });
 }
 
 function pruneBackups(maxCount) {
-  const limit = Number(maxCount) > 0 ? Number(maxCount) : getBackupMaxCount();
-  const backups = listStoreBackups();
-  if (backups.length <= limit) {
-    return backups;
-  }
-  const overflowItems = backups.slice(limit);
-  for (const item of overflowItems) {
-    unlinkSync(path.join(BACKUP_DIR, item.fileName));
-  }
-  return listStoreBackups();
+  return pruneBackupsInStorage({
+    maxCount,
+    getBackupMaxCount,
+    backupDir: BACKUP_DIR,
+    backupFilePrefix: BACKUP_FILE_PREFIX,
+    backupFileSuffix: BACKUP_FILE_SUFFIX,
+    compareIsoDesc,
+  });
 }
 
 function restoreStoreBackup(backupId) {
-  const backupPath = resolveBackupFilePath(backupId);
-  if (!backupPath) {
-    throw new Error("backupId is invalid.");
-  }
-  if (!existsSync(backupPath)) {
-    throw new Error("Backup not found.");
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(readFileSync(backupPath, "utf8"));
-  } catch {
-    throw new Error("Backup JSON is invalid.");
-  }
-
-  const normalized = normalizeStoreShape(parsed);
-  if (!Array.isArray(normalized.users) || !normalized.users.length) {
-    throw new Error("Backup store has no users.");
-  }
-  const clearedSessionCount = Array.isArray(normalized.authSessions) ? normalized.authSessions.length : 0;
-  normalized.authSessions = [];
-  store = normalized;
-  touchStore();
-  persistStore();
-  initializeBackupSystem();
-  return {
+  return restoreStoreBackupFromIdInModule({
     backupId,
-    restoredAt: nowIso(),
-    clearedSessionCount,
-  };
+    resolveBackupFilePath,
+    normalizeStoreShape,
+    nowIso,
+    applyNormalizedStore(normalized) {
+      store = normalized;
+      touchStore();
+      persistStore();
+      initializeBackupSystem();
+    },
+  });
 }
 
 function restoreStoreBackupByDate(backupDate) {
-  const normalizedDate = normalizeBackupDateInput(backupDate);
-  if (!normalizedDate) {
-    throw new Error("backupDate is invalid.");
-  }
-  const targetBackup = listStoreBackups().find((item) => item.date === normalizedDate);
-  if (!targetBackup) {
-    throw new Error("Backup date not found.");
-  }
-  const restored = restoreStoreBackup(targetBackup.id);
-  return {
-    ...restored,
-    backupDate: normalizedDate,
-  };
+  return restoreStoreBackupByDateInModule({
+    backupDate,
+    normalizeBackupDateInput,
+    listStoreBackups,
+    restoreStoreBackup,
+  });
 }
 
 function listBackupFileNames() {
-  if (!existsSync(BACKUP_DIR)) {
-    return [];
-  }
-  return readdirSync(BACKUP_DIR).filter(
-    (fileName) => fileName.startsWith(BACKUP_FILE_PREFIX) && fileName.endsWith(BACKUP_FILE_SUFFIX),
-  );
+  return listBackupFileNamesInStorage({
+    backupDir: BACKUP_DIR,
+    backupFilePrefix: BACKUP_FILE_PREFIX,
+    backupFileSuffix: BACKUP_FILE_SUFFIX,
+  });
 }
 
 function buildBackupItem(fileName, stat) {
-  const createdAt = new Date(stat.mtimeMs).toISOString();
-  return {
-    id: fileName,
-    fileName,
-    trigger: resolveBackupTrigger(fileName),
-    createdAt,
-    date: createdAt.slice(0, 10),
-    sizeBytes: Number(stat.size) || 0,
-  };
+  return buildBackupItemInStorage({ fileName, stat });
 }
 
 function resolveBackupTrigger(fileName) {
-  const match = String(fileName || "").match(/-(auto|manual)\.json$/);
-  return match ? match[1] : "manual";
+  return resolveBackupTriggerInStorage(fileName);
 }
 
 function resolveBackupFilePath(backupId) {
-  const normalized = asString(backupId);
-  if (!normalized || normalized.includes("/") || normalized.includes("\\") || normalized.includes("..")) {
-    return "";
-  }
-  if (!normalized.startsWith(BACKUP_FILE_PREFIX) || !normalized.endsWith(BACKUP_FILE_SUFFIX)) {
-    return "";
-  }
-  return path.join(BACKUP_DIR, normalized);
+  return resolveBackupFilePathInStorage({
+    backupId,
+    backupDir: BACKUP_DIR,
+    backupFilePrefix: BACKUP_FILE_PREFIX,
+    backupFileSuffix: BACKUP_FILE_SUFFIX,
+    asString,
+  });
 }
 
 function buildDashboard(projects, tasks) {
-  const stageCounts = new Map();
-  const issueCounts = new Map();
-
-  for (const project of projects) {
-    stageCounts.set(project.stage.name, (stageCounts.get(project.stage.name) || 0) + 1);
-    for (const issueName of project.issueNames) {
-      issueCounts.set(issueName, (issueCounts.get(issueName) || 0) + 1);
-    }
-  }
-
-  return {
-    totalProjects: projects.length,
-    attentionProjects: projects.filter((project) => project.managerAttentionNeeded).length,
-    overdueTasks: tasks.filter((task) => task.overdue).length,
-    stalledProjects: projects.filter((project) => project.isStalled).length,
-    tasksInFlight: tasks.filter((task) => task.status !== "completed").length,
-    stageDistribution: mapCountEntries(stageCounts),
-    issueDistribution: mapCountEntries(issueCounts),
-  };
+  return buildDashboardMetricsInModule({
+    projects,
+    tasks,
+    mapCountEntries,
+  });
 }
 
 function buildSignals(projects, tasks, visibleProjectIds) {
-  return {
-    attentionProjects: projects.filter((project) => project.managerAttentionNeeded).slice(0, 4),
-    stalledProjects: projects.filter((project) => project.isStalled).slice(0, 4),
-    overdueTasks: tasks.filter((task) => task.overdue).slice(0, 4),
-    recentUpdates: [...store.updates]
-      .filter((update) => visibleProjectIds.has(update.projectId))
-      .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt))
-      .slice(0, 5)
-      .map((update) => buildUpdateView(update)),
-  };
+  return buildSignalsPayloadInModule({
+    projects,
+    tasks,
+    updates: store.updates,
+    visibleProjectIds,
+    compareIsoDesc,
+    buildUpdateView,
+  });
 }
 
 function canUserAccessProject(currentUser, project) {
-  if (!currentUser || !project) {
-    return false;
-  }
-  const role = normalizeUserRole(currentUser.role);
-  if (role === "manager") {
-    return true;
-  }
-  if (role === "supervisor") {
-    return project.regionId === currentUser.regionId;
-  }
-  return project.ownerUserId === currentUser.id;
+  return canUserAccessProjectByRoleInModule({
+    currentUser,
+    project,
+    users: store.users,
+    normalizeUserRole,
+    asString,
+  });
 }
 
 function isManagerUser(user) {
@@ -1502,78 +1340,73 @@ function isBackupAdminUser(user) {
 }
 
 function buildManagementPayload(currentUser) {
-  const roleCounts = Object.keys(ROLE_DEFINITIONS).map((code) => ({
-    code,
-    name: ROLE_DEFINITIONS[code].name,
-    rank: ROLE_DEFINITIONS[code].rank,
-    count: store.users.filter((item) => normalizeUserRole(item.role) === code).length,
-  }));
-  const allUsers = [...store.users]
-    .map((item) => buildUserView(item))
-    .filter(Boolean)
-    .sort((left, right) => {
-      const roleRankDelta =
-        (ROLE_DEFINITIONS[right.role]?.rank || 0) - (ROLE_DEFINITIONS[left.role]?.rank || 0);
-      if (roleRankDelta) {
-        return roleRankDelta;
-      }
-      return left.name.localeCompare(right.name, "zh-CN");
-    });
-  const role = normalizeUserRole(currentUser?.role);
-  let visibleUsers = [];
-  if (role === "manager") {
-    visibleUsers = allUsers;
-  } else if (role === "supervisor") {
-    visibleUsers = allUsers.filter(
-      (item) => item.role !== "manager" && item.regionId === asString(currentUser?.regionId),
-    );
-  } else if (currentUser?.id) {
-    visibleUsers = allUsers.filter((item) => item.id === currentUser.id);
-  }
-  return {
-    levels: roleCounts,
-    visibleUsers,
-    canManageUsers: role === "manager",
-    canManageBackups: isBackupAdminUser(currentUser),
-  };
+  return buildManagementPayloadView({
+    currentUser,
+    roleDefinitions: ROLE_DEFINITIONS,
+    users: store.users,
+    normalizeUserRole,
+    buildUserView,
+    asString,
+    isBackupAdminUser,
+  });
+}
+
+function collectAccessibleUserIds(currentUser) {
+  return collectAccessibleUserIdsByRoleInModule({
+    currentUser,
+    users: store.users,
+    normalizeUserRole,
+    asString,
+  });
 }
 
 function collectVisibleProjectIds(currentUser) {
-  return new Set(
-    store.projects
-      .filter((project) => canUserAccessProject(currentUser, project))
-      .map((project) => project.id),
-  );
+  return collectVisibleProjectIdsByAccessInModule({
+    projects: store.projects,
+    currentUser,
+    canUserAccessProject,
+  });
 }
 
 function buildProjectViews(currentUser, visibleProjectIds = collectVisibleProjectIds(currentUser)) {
-  return [...store.projects]
-    .filter((project) => visibleProjectIds.has(project.id))
-    .map((project) => buildProjectView(project))
-    .sort(compareProjectViews);
+  return buildProjectViewsForVisibleIdsInModule({
+    projects: store.projects,
+    visibleProjectIds,
+    buildProjectView,
+    compareProjectViews,
+  });
 }
 
 function buildProjectView(project) {
   const hospital = getHospitalById(project.hospitalId);
   const region = getRegionById(project.regionId);
   const stage = getStageById(project.currentStageId);
-  const tasks = store.tasks
-    .filter((task) => task.projectId === project.id)
-    .map((task) => buildTaskView(task))
-    .sort(compareTaskViews);
-  const updates = store.updates
-    .filter((update) => update.projectId === project.id)
-    .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt))
-    .map((update) => buildUpdateView(update));
-  const contacts = store.contacts
-    .filter((contact) => contact.hospitalId === project.hospitalId)
-    .sort((left, right) => compareIsoDesc(left.lastContactAt, right.lastContactAt))
-    .map((contact) => buildContactView(contact));
-  const remarks = store.remarks
-    .filter((remark) => remark.projectId === project.id)
-    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt))
-    .map((remark) => buildProjectRemarkView(remark));
+  const { tasks, updates, contacts, remarks } = buildProjectCollectionsInModule({
+    project,
+    tasks: store.tasks,
+    updates: store.updates,
+    contacts: store.contacts,
+    remarks: store.remarks,
+    buildTaskView,
+    buildUpdateView,
+    buildContactView,
+    buildProjectRemarkView,
+    compareTaskViews,
+    compareIsoDesc,
+    compareIsoAsc,
+  });
   const stalledDays = calculateStalledDays(project.lastFollowUpAt);
+  const metrics = buildProjectMetricsInModule({ tasks, updates, remarks });
+  const contactReferenceWarnings = buildProjectContactReferenceWarningMessages({
+    project,
+    updates,
+    tasks,
+  });
+
+  const hasUpdates = updates.length > 0;
+  const initialDepartmentName = !hasUpdates
+    ? getDepartmentById(project.initialDepartmentId)?.name || ""
+    : "";
 
   return {
     id: project.id,
@@ -1596,137 +1429,404 @@ function buildProjectView(project) {
     riskLevel: project.riskLevel,
     managerAttentionNeeded: Boolean(project.managerAttentionNeeded),
     lastFollowUpAt: project.lastFollowUpAt,
-    nextAction: project.nextAction,
+    nextAction: renderStoredTextValue(project, "nextActionSegments", "nextAction"),
     nextActionDueAt: project.nextActionDueAt,
-    latestSummary: project.latestSummary,
+    latestSummary: renderStoredTextValue(project, "latestSummarySegments", "latestSummary"),
+    departmentName: hasUpdates ? updates[0]?.departmentName || "" : initialDepartmentName,
+    departmentSuggestions: listHospitalDepartmentNames(project.hospitalId),
     issueNames: (project.currentIssueTagIds || [])
       .map((id) => getIssueTagById(id)?.name)
       .filter(Boolean),
     blockers: updates[0]?.blockers || "",
     contacts,
+    contactReferenceWarnings,
     remarks,
     tasks,
     updates,
-    metrics: {
-      openTaskCount: tasks.filter((task) => task.status !== "completed").length,
-      overdueTaskCount: tasks.filter((task) => task.overdue).length,
-      updateCount: updates.length,
-      remarkCount: remarks.length,
-      remarkRepliedCount: remarks.filter((item) => item.replyContent).length,
-    },
+    metrics,
     stalledDays,
     isStalled: stalledDays >= 10,
   };
 }
 
 function buildTaskViews(currentUser, visibleProjectIds = collectVisibleProjectIds(currentUser)) {
-  return [...store.tasks]
-    .filter((task) => visibleProjectIds.has(task.projectId))
-    .map((task) => buildTaskView(task))
-    .sort(compareTaskViews);
+  return buildTaskViewsForVisibleIdsInModule({
+    tasks: store.tasks,
+    visibleProjectIds,
+    buildTaskView,
+    compareTaskViews,
+  });
 }
 function buildTaskView(task) {
-  const project = getProjectById(task.projectId);
-  const hospital = getHospitalById(project.hospitalId);
-  const assignee = getUserById(task.assigneeUserId);
-  const overdue = task.status !== "completed" && isDatePast(task.dueAt);
-
-  return {
-    id: task.id,
-    projectId: task.projectId,
-    hospitalName: hospital.name,
-    title: task.title,
-    description: task.description,
-    assigneeName: assignee?.name || "未分配",
-    dueAt: task.dueAt,
-    status: task.status,
-    effectiveStatus: overdue ? "overdue" : task.status,
-    overdue,
-    priority: task.priority,
-    completedAt: task.completedAt,
-  };
+  return buildTaskViewEntityInModule({
+    task: {
+      ...task,
+      title: renderStoredTextValue(task, "titleSegments", "title"),
+      description: renderStoredTextValue(task, "descriptionSegments", "description"),
+      relatedContactIds: resolveExistingContactIds(task.relatedContactIds),
+      relatedContacts: resolveContactViewsByIds(task.relatedContactIds),
+      contactReferenceWarnings: buildEntityContactReferenceWarningMessages(task, "待办事项"),
+    },
+    getProjectById,
+    getHospitalById,
+    getUserById,
+    isDatePast,
+  });
 }
 
 function buildUpdateView(update) {
-  const project = getProjectById(update.projectId);
-  const hospital = project ? getHospitalById(project.hospitalId) : null;
-
-  return {
-    id: update.id,
-    projectId: update.projectId,
-    hospitalName: hospital?.name || "",
-    visitDate: update.visitDate,
-    createdAt: update.createdAt,
-    createdByName: getUserById(update.createdByUserId)?.name || "未知用户",
-    departmentName: getDepartmentById(update.departmentId)?.name || "未填写",
-    contacts: update.contactEntries || [],
-    feedbackSummary: update.feedbackSummary,
-    blockers: update.blockers,
-    opportunities: update.opportunities,
-    nextStep: update.nextStep,
-    issueNames: (update.issueTagIds || []).map((id) => getIssueTagById(id)?.name).filter(Boolean),
-    stageBeforeName: getStageById(update.stageBeforeId)?.name || "",
-    stageAfterName: getStageById(update.stageAfterId)?.name || "",
-    managerAttentionNeeded: Boolean(update.managerAttentionNeeded),
-    sourceNote: update.sourceNote,
-  };
+  return buildUpdateViewEntityInModule({
+    update: {
+      ...update,
+      contactEntries: buildRenderedContactEntries(update.contactEntries),
+      feedbackSummary: renderStoredTextValue(update, "feedbackSummarySegments", "feedbackSummary"),
+      blockers: renderStoredTextValue(update, "blockersSegments", "blockers"),
+      opportunities: renderStoredTextValue(update, "opportunitiesSegments", "opportunities"),
+      nextStep: renderStoredTextValue(update, "nextStepSegments", "nextStep"),
+      relatedContactIds: resolveExistingContactIds((update.contactEntries || []).map((item) => item.contactId)),
+      relatedContacts: resolveContactViewsByIds((update.contactEntries || []).map((item) => item.contactId)),
+      contactReferenceWarnings: buildEntityContactReferenceWarningMessages(update, "历史时间线"),
+    },
+    getProjectById,
+    getHospitalById,
+    getUserById,
+    getDepartmentById,
+    getIssueTagById,
+    getStageById,
+  });
 }
 
 function buildContactView(contact) {
-  return {
-    id: contact.id,
-    name: contact.name,
-    roleTitle: contact.roleTitle || "",
-    departmentName: getDepartmentById(contact.departmentId)?.name || "",
-    lastContactAt: contact.lastContactAt || null,
-  };
+  return buildContactViewEntityInModule({
+    contact,
+    getDepartmentById,
+  });
 }
 
 function buildUserView(user) {
-  if (!user) {
-    return null;
-  }
-  const role = normalizeUserRole(user.role);
-  const roleMeta = ROLE_DEFINITIONS[role];
-
-  return {
-    id: user.id,
-    name: user.name,
-    account: user.account || "",
-    role,
-    roleName: roleMeta?.name || role,
-    regionId: user.regionId || "",
-    regionName: getRegionById(user.regionId)?.name || "",
-    isBackupAdmin: isBackupAdminUser(user),
-  };
+  return buildUserViewEntityInModule({
+    user,
+    normalizeUserRole,
+    roleDefinitions: ROLE_DEFINITIONS,
+    getRegionById,
+    getUserById,
+    isBackupAdminUser,
+  });
 }
 
 function buildProjectRemarkView(remark) {
-  const fromUser = getUserById(remark.fromUserId);
-  const toUser = getUserById(remark.toUserId);
-  const replyByUser = getUserById(remark.replyByUserId);
-  const readByUser = getUserById(remark.readByUserId);
+  return buildProjectRemarkViewEntityInModule({
+    remark,
+    getUserById,
+  });
+}
 
-  return {
-    id: remark.id,
-    projectId: remark.projectId,
-    updateId: remark.updateId || null,
-    fromUserId: remark.fromUserId,
-    fromUserName: fromUser?.name || "未知上级",
-    toUserId: remark.toUserId,
-    toUserName: toUser?.name || "未知成员",
-    content: remark.content,
-    createdAt: remark.createdAt,
-    replyContent: remark.replyContent || "",
-    replyByUserId: remark.replyByUserId || "",
-    replyByUserName: replyByUser?.name || "",
-    repliedAt: remark.repliedAt || null,
-    readByUserId: remark.readByUserId || "",
-    readByUserName: readByUser?.name || "",
-    readAt: remark.readAt || null,
-    isRead: Boolean(remark.readAt),
-    status: remark.replyContent ? "replied" : "pending",
-  };
+function renderStoredTextValue(entity, segmentField, legacyField) {
+  return renderStoredTextSegments(entity?.[segmentField], entity?.[legacyField]);
+}
+
+function renderStoredTextSegments(rawSegments, fallbackText = "") {
+  return normalizeStoredTextSegments(rawSegments, fallbackText)
+    .map((segment) => {
+      if (segment.type === "contact") {
+        return getContactById(segment.contactId)?.name || segment.fallbackText || "";
+      }
+      return asText(segment.text);
+    })
+    .join("");
+}
+
+function replaceStoredTextSegmentContactIds(rawSegments, changeBySourceId) {
+  const normalizedSegments = normalizeStoredTextSegments(rawSegments);
+  if (!(changeBySourceId instanceof Map) || !changeBySourceId.size) {
+    return normalizedSegments;
+  }
+  return normalizedSegments.map((segment) => {
+    if (segment.type !== "contact") {
+      return segment;
+    }
+    const replacement = changeBySourceId.get(segment.contactId);
+    if (!replacement?.to?.contactId) {
+      return segment;
+    }
+    return {
+      ...segment,
+      contactId: replacement.to.contactId,
+    };
+  });
+}
+
+function resolveExistingContactIds(rawContactIds) {
+  return normalizeStringIdArray(rawContactIds).filter((contactId) => Boolean(getContactById(contactId)));
+}
+
+function resolveContactViewsByIds(rawContactIds) {
+  return resolveExistingContactIds(rawContactIds)
+    .map((contactId) => getContactById(contactId))
+    .filter(Boolean)
+    .map((contact) => buildContactView(contact));
+}
+
+function buildRenderedContactEntries(rawEntries) {
+  return normalizeStoredContactEntries(rawEntries).map((entry) => {
+    const contact = getContactById(entry.contactId);
+    return {
+      contactId: entry.contactId,
+      name: contact?.name || entry.name || "",
+      role: contact?.roleTitle || entry.role || "",
+      departmentName: "",
+    };
+  });
+}
+
+function buildEntityContactReferenceWarningMessages(entity, sourceLabel) {
+  return normalizeStoredReferenceWarnings(entity?.contactReferenceWarnings).map((warning) =>
+    formatContactReferenceWarningMessage(warning, sourceLabel),
+  );
+}
+
+function buildProjectContactReferenceWarningMessages({ project, updates = [], tasks = [] }) {
+  const messages = [
+    ...buildEntityContactReferenceWarningMessages(project, "当前项目"),
+    ...updates.flatMap((item) => asArray(item?.contactReferenceWarnings)),
+    ...tasks.flatMap((item) => asArray(item?.contactReferenceWarnings)),
+  ];
+  return uniqueStrings(messages);
+}
+
+function formatContactReferenceWarningMessage(warning, sourceLabel) {
+  const normalizedWarning = normalizeStoredReferenceWarnings([warning])[0];
+  if (!normalizedWarning) {
+    return "";
+  }
+  const label = sourceLabel || "当前内容";
+  return `${label}中存在未解析联系人“${normalizedWarning.name}”，请先到关键联系人中确认后再关联。`;
+}
+
+function createStatusError(message, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function respondRouteError({ res, error, fallbackStatus = 400, fallbackMessage = "Request is invalid." }) {
+  const statusCode = Number(error?.statusCode) || fallbackStatus;
+  res.status(statusCode).json({
+    error: error instanceof Error ? error.message : fallbackMessage,
+  });
+}
+
+function executeRouteStep({ res, fallbackStatus = 400, fallbackMessage = "Request is invalid.", action }) {
+  try {
+    return action();
+  } catch (error) {
+    respondRouteError({
+      res,
+      error,
+      fallbackStatus,
+      fallbackMessage,
+    });
+    return null;
+  }
+}
+
+async function executeRouteStepAsync({ res, fallbackStatus = 500, fallbackMessage = "Request failed.", action }) {
+  try {
+    return await action();
+  } catch (error) {
+    respondRouteError({
+      res,
+      error,
+      fallbackStatus,
+      fallbackMessage,
+    });
+    return null;
+  }
+}
+
+async function handleFollowupQuestionRequest({ req, res }) {
+  return handleFollowupQuestionRequestInModule({
+    req,
+    res,
+    executeRouteStep,
+    executeRouteStepAsync,
+    parseInput(body) {
+      return parseFollowupQuestionRouteInputInModule({
+        body,
+        asString,
+        normalizeDateOnly,
+        todayDateOnly,
+        parseScenarioPayload,
+      });
+    },
+    resolveAccessContext({ projectId, sessionId, historySessionId, currentUser }) {
+      const project = resolveFollowupProjectForQuestionRouteInModule({
+        projectId,
+        projects: store.projects,
+        currentUser,
+        canUserAccessProject,
+      });
+      const followupSession = resolveFollowupSessionForQuestionRouteInModule({
+        sessionId,
+        projectId,
+        currentUser,
+        getFollowupSessionById,
+      });
+      assertHistorySessionValidForQuestionRouteInModule({
+        historySessionId,
+        projectId,
+        getFollowupSessionById,
+      });
+      return { project, followupSession };
+    },
+    createQuestions({ parsedInput, accessContext, currentUser }) {
+      const { note, visitDate, historySessionId, scenario } = parsedInput;
+      const { project, followupSession } = accessContext;
+      return createFollowupQuestions({
+        session: followupSession,
+        project,
+        note,
+        visitDate,
+        historySessionId: followupSession ? "" : historySessionId,
+        scenario,
+        source: "web-followup",
+        currentUser,
+        minQuestions: 1,
+        maxQuestions: 1,
+      });
+    },
+  });
+}
+
+function handleFollowupHistoryRequest({ req, res }) {
+  return handleFollowupHistoryRequestInModule({
+    req,
+    res,
+    executeRouteStep,
+    parseInput(query) {
+      return parseFollowupHistoryRouteInputInModule({
+        query,
+        asString,
+      });
+    },
+    resolveProject({ projectId, currentUser }) {
+      return resolveFollowupProjectForQuestionRouteInModule({
+        projectId,
+        projects: store.projects,
+        currentUser,
+        canUserAccessProject,
+      });
+    },
+    buildSessions: buildFollowupHistorySessionsForProject,
+    buildPayload: buildFollowupHistoryPayload,
+  });
+}
+
+function handleFollowupAnswerRequest({ req, res, mode }) {
+  if (mode !== "single" && mode !== "batch") {
+    throw new Error("Follow-up answer mode is invalid.");
+  }
+
+  const parsedInput = executeRouteStep({
+    res,
+    fallbackStatus: 400,
+    fallbackMessage: mode === "single" ? "Follow-up answer request is invalid." : "Follow-up answers request is invalid.",
+    action: () =>
+      mode === "single"
+        ? parseFollowupSingleAnswerRouteInputInModule({
+            body: req.body,
+            asString,
+            parseScenarioPayload,
+          })
+        : parseFollowupBatchAnswerRouteInputInModule({
+            body: req.body,
+            asString,
+            parseScenarioPayload,
+          }),
+  });
+  if (!parsedInput) {
+    return null;
+  }
+
+  const sessionId = parsedInput.sessionId;
+  const session = executeRouteStep({
+    res,
+    fallbackStatus: 400,
+    fallbackMessage: "Follow-up answer access check failed.",
+    action: () =>
+      resolveFollowupAnswerAccessContextInModule({
+        sessionId,
+        currentUser: req.currentUser,
+        getFollowupSessionById,
+        getProjectById,
+        canUserAccessProject,
+      }).session,
+  });
+  if (!session) {
+    return null;
+  }
+
+  if (mode === "single") {
+    const { questionMessageId, answer, scenario } = parsedInput;
+    const questionMessage = executeRouteStep({
+      res,
+      fallbackStatus: 400,
+      fallbackMessage: "Follow-up question check failed.",
+      action: () =>
+        resolveFollowupQuestionForSingleAnswerInModule({
+          messages: store.messages,
+          sessionId,
+          questionMessageId,
+        }),
+    });
+    if (!questionMessage) {
+      return null;
+    }
+    return answerFollowupQuestion({
+      session,
+      questionMessage,
+      answer,
+      scenario,
+      actorUser: req.currentUser,
+    });
+  }
+
+  const { answersRaw, scenario } = parsedInput;
+  const normalizedAnswers = executeRouteStep({
+    res,
+    fallbackStatus: 400,
+    fallbackMessage: "answers payload is invalid.",
+    action: () =>
+      normalizeFollowupAnswerItemsInModule({
+        answersRaw,
+        asString,
+      }),
+  });
+  if (!normalizedAnswers) {
+    return null;
+  }
+
+  const items = executeRouteStep({
+    res,
+    fallbackStatus: 400,
+    fallbackMessage: "Follow-up questions check failed.",
+    action: () =>
+      buildFollowupItemsForBatchAnswerInModule({
+        messages: store.messages,
+        sessionId,
+        normalizedAnswers,
+      }),
+  });
+  if (!items) {
+    return null;
+  }
+
+  return answerFollowupQuestionsBatch({
+    session,
+    items,
+    scenario,
+    actorUser: req.currentUser,
+  });
 }
 
 function createFollowupSession({
@@ -1738,42 +1838,21 @@ function createFollowupSession({
   currentUser,
   historySourceSessionId = "",
 }) {
-  const normalizedScenario = normalizeScenarioForStorage({
-    scenario,
-    operation: "generate",
+  return createFollowupSessionInModule({
     project,
-  });
-
-  const session = {
-    id: createId("session"),
-    projectId: project.id,
-    userId: currentUser?.id || "",
-    source: source || "web-followup",
-    sessionType: "followup",
-    scenario: normalizedScenario,
+    note,
     visitDate,
-    historySourceSessionId: asString(historySourceSessionId) || null,
-    closedAt: null,
-    closedReason: "",
-    linkedIntakeSessionId: null,
-    createdAt: nowIso(),
-  };
-  store.sessions.push(session);
-
-  store.messages.push({
-    id: createId("message"),
-    sessionId: session.id,
-    senderType: "user",
-    kind: "followup_seed",
-    round: 0,
-    questionStatus: null,
-    relatedMessageId: null,
-    scenarioSnapshot: normalizedScenario,
-    content: note,
-    createdAt: nowIso(),
+    scenario,
+    source,
+    currentUser,
+    historySourceSessionId,
+    normalizeScenarioForStorage,
+    createId,
+    asString,
+    nowIso,
+    sessions: store.sessions,
+    messages: store.messages,
   });
-
-  return session;
 }
 
 async function createFollowupQuestions({
@@ -1788,70 +1867,30 @@ async function createFollowupQuestions({
   minQuestions = 1,
   maxQuestions = 3,
 }) {
-  const normalizedScenario = normalizeScenarioForStorage({
-    scenario,
-    operation: "generate",
-    project,
-  });
-  const historyContextSessionId = session ? session.id : asString(historySessionId);
-  const history = historyContextSessionId ? buildFollowupHistory(historyContextSessionId) : [];
-  const pendingQuestions = session ? findPendingFollowupQuestions(session.id) : [];
-  const extracted = await extractFollowupQuestions({
+  return createFollowupQuestionsInModule({
+    session,
     project,
     note,
     visitDate,
-    history,
+    historySessionId,
+    scenario,
+    source,
+    currentUser,
     minQuestions,
     maxQuestions,
+    normalizeScenarioForStorage,
+    asString,
+    buildFollowupHistory,
+    findPendingFollowupQuestions,
+    extractFollowupQuestions,
+    createFollowupSession,
+    messages: store.messages,
+    createId,
+    nowIso,
+    touchStore,
+    persistStore,
+    buildFollowupQuestionView,
   });
-
-  const activeSession =
-    session ||
-    createFollowupSession({
-      project,
-      note,
-      visitDate,
-      scenario,
-      source,
-      currentUser,
-      historySourceSessionId: historySessionId,
-    });
-
-  for (const pendingQuestion of pendingQuestions) {
-    pendingQuestion.questionStatus = "unsatisfied";
-  }
-
-  let round =
-    store.messages
-      .filter((item) => item.sessionId === activeSession.id && item.kind === "followup_question")
-      .reduce((max, item) => Math.max(max, Number(item.round) || 0), 0);
-  const questionMessages = extracted.questions.map((item) => {
-    round += 1;
-    return {
-      id: createId("message"),
-      sessionId: activeSession.id,
-      senderType: "assistant",
-      kind: "followup_question",
-      round,
-      questionStatus: "pending_answer",
-      relatedMessageId: null,
-      scenarioSnapshot: normalizedScenario,
-      content: item.question,
-      intent: item.intent,
-      createdAt: nowIso(),
-    };
-  });
-  store.messages.push(...questionMessages);
-
-  touchStore();
-  persistStore();
-
-  return {
-    ok: true,
-    sessionId: activeSession.id,
-    questions: questionMessages.map((message) => buildFollowupQuestionView(message)),
-    history: buildFollowupHistory(activeSession.id),
-  };
 }
 
 function answerFollowupQuestion({ session, questionMessage, answer, scenario, actorUser = null }) {
@@ -1871,76 +1910,34 @@ function answerFollowupQuestion({ session, questionMessage, answer, scenario, ac
 }
 
 function answerFollowupQuestionsBatch({ session, items, scenario, actorUser = null }) {
-  const project = getProjectById(session.projectId);
-  const submittedByUserId = asString(actorUser?.id) || asString(session.userId);
-  const submittedByUser = getUserById(submittedByUserId);
-  const submittedByUserName = asString(actorUser?.name) || submittedByUser?.name || "";
-  const normalizedScenario = normalizeScenarioForStorage({
+  return answerFollowupQuestionsBatchInModule({
+    session,
+    items,
     scenario,
-    operation: "answer",
-    project,
+    actorUser,
+    getProjectById,
+    asString,
+    getUserById,
+    normalizeScenarioForStorage,
+    createId,
+    nowIso,
+    messages: store.messages,
+    touchStore,
+    persistStore,
+    buildFollowupHistory,
   });
-  const answerMessages = items.map((item) => ({
-    id: createId("message"),
-    sessionId: session.id,
-    senderType: "user",
-    kind: "followup_answer",
-    round: item.questionMessage.round || 0,
-    questionStatus: null,
-    relatedMessageId: item.questionMessage.id,
-    scenarioSnapshot: normalizedScenario,
-    userId: submittedByUserId,
-    submittedByUserId,
-    submittedByUserName,
-    content: item.answer,
-    createdAt: nowIso(),
-  }));
-  store.messages.push(...answerMessages);
-  for (const item of items) {
-    item.questionMessage.questionStatus = "answered";
-  }
-
-  touchStore();
-  persistStore();
-
-  return {
-    ok: true,
-    sessionId: session.id,
-    answers: answerMessages.map((item) => ({
-      id: item.id,
-      content: item.content,
-      round: item.round || 0,
-      relatedMessageId: item.relatedMessageId,
-      createdAt: item.createdAt,
-      submittedByUserId: item.submittedByUserId || "",
-      submittedByUserName: item.submittedByUserName || "",
-      scenarioSnapshot: item.scenarioSnapshot || null,
-    })),
-    history: buildFollowupHistory(session.id),
-  };
 }
 
 function closeFollowupSessionOnSubmit({ followupSession, intakeSessionId, scenario, project }) {
-  const normalizedScenario = normalizeScenarioForStorage({
+  closeFollowupSessionOnSubmitInModule({
+    followupSession,
+    intakeSessionId,
     scenario,
-    operation: "submit",
     project,
+    messages: store.messages,
+    normalizeScenarioForStorage,
+    nowIso,
   });
-  for (const message of store.messages) {
-    if (
-      message.sessionId === followupSession.id &&
-      message.kind === "followup_question" &&
-      message.questionStatus === "pending_answer"
-    ) {
-      message.questionStatus = "unanswered_on_submit";
-      if (!message.scenarioSnapshot) {
-        message.scenarioSnapshot = normalizedScenario;
-      }
-    }
-  }
-  followupSession.closedAt = nowIso();
-  followupSession.closedReason = "intake_submitted";
-  followupSession.linkedIntakeSessionId = intakeSessionId;
 }
 
 async function extractFollowupQuestions({
@@ -1968,175 +1965,85 @@ async function extractFollowupQuestions({
 }
 
 function buildFollowupPrompt({ project, note, visitDate, history, minQuestions = 1, maxQuestions = 3 }) {
-  const hospital = getHospitalById(project.hospitalId);
-  const stage = getStageById(project.currentStageId);
-  const historyText = history.length
-    ? history
-        .map((item, index) => {
-          const answerText = item.answer?.content || "(未回答)";
-          return `${index + 1}. 问题：${item.question}\n   状态：${item.status}\n   回答：${answerText}`;
-        })
-        .join("\n")
-    : "暂无历史追问。";
-
-  return [
-    "你是医疗器械导入项目的追问助手。",
-    `请根据原始纪要和历史问答，输出 ${minQuestions}-${maxQuestions} 个最有价值的追问问题，帮助完善结构化抽取信息。`,
-    "每个问题都必须具体、可回答、与推进动作相关，不要泛泛而谈。",
-    `医院：${hospital.name}`,
-    `当前阶段：${stage.name}`,
-    `拜访日期：${visitDate}`,
-    "原始纪要：",
+  return buildFollowupPromptInModule({
+    project,
     note,
-    "历史追问与回答：",
-    historyText,
-  ].join("\n");
+    visitDate,
+    history,
+    minQuestions,
+    maxQuestions,
+    getHospitalById,
+    getStageById,
+  });
 }
 
 function normalizeFollowupQuestionsPayload(raw, { minQuestions = 1, maxQuestions = 3 } = {}) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("Responses API returned an invalid follow-up questions payload.");
-  }
-
-  const rawQuestions = Array.isArray(raw.questions) ? raw.questions : null;
-  if (!rawQuestions) {
-    throw new Error("Responses API returned follow-up questions without questions array.");
-  }
-  if (rawQuestions.length < minQuestions || rawQuestions.length > maxQuestions) {
-    throw new Error(
-      `Responses API returned ${rawQuestions.length} follow-up questions; expected ${minQuestions}-${maxQuestions}.`,
-    );
-  }
-
-  const questions = rawQuestions.map((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new Error(`Responses API returned invalid follow-up question item at index ${index}.`);
-    }
-    const question = clipText(asString(item.question), 180);
-    if (!question) {
-      throw new Error(`Responses API returned an empty follow-up question at index ${index}.`);
-    }
-    return {
-      question,
-      intent: clipText(asString(item.intent), 120),
-    };
+  return normalizeFollowupQuestionsPayloadInModule({
+    raw,
+    minQuestions,
+    maxQuestions,
+    clipText,
+    asString,
   });
-
-  return { questions };
 }
 
 function buildFollowupHistorySessionView(session) {
-  const sessionUser = getUserById(session.userId);
-  const seedMessage = store.messages
-    .filter((item) => item.sessionId === session.id && item.kind === "followup_seed")
-    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt))[0];
-  return {
-    sessionId: session.id,
-    projectId: session.projectId,
-    source: session.source || "",
-    userId: session.userId || "",
-    userName: sessionUser?.name || "",
-    createdAt: session.createdAt,
-    closedAt: session.closedAt || null,
-    closedReason: session.closedReason || "",
-    linkedIntakeSessionId: session.linkedIntakeSessionId || null,
-    historySourceSessionId: session.historySourceSessionId || null,
-    scenario: session.scenario || null,
-    seedNote: seedMessage?.content || "",
-    history: buildFollowupHistoryDetailed(session.id, session),
-  };
+  return buildFollowupHistorySessionSummaryInModule({
+    session,
+    messages: store.messages,
+    compareIsoAsc,
+    getUserById,
+    buildFollowupHistoryDetailed,
+  });
 }
 
 function buildFollowupHistoryDetailed(sessionId, session = null) {
-  const messages = store.messages
-    .filter((item) => item.sessionId === sessionId)
-    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt));
-  const answerByQuestionId = new Map(
-    messages
-      .filter((item) => item.kind === "followup_answer" && item.relatedMessageId)
-      .map((item) => [item.relatedMessageId, item]),
-  );
-  return messages
-    .filter((item) => item.kind === "followup_question")
-    .map((item) => {
-      const answerMessage = answerByQuestionId.get(item.id);
-      const submittedByUserId =
-        asString(answerMessage?.submittedByUserId) ||
-        asString(answerMessage?.userId) ||
-        asString(session?.userId);
-      const submittedByUser = getUserById(submittedByUserId);
-      return {
-        id: item.id,
-        round: Number(item.round) || 0,
-        question: item.content,
-        status: item.questionStatus || "pending_answer",
-        createdAt: item.createdAt,
-        scenarioSnapshot: item.scenarioSnapshot || null,
-        answer: answerMessage
-          ? {
-              id: answerMessage.id,
-              content: answerMessage.content,
-              createdAt: answerMessage.createdAt,
-              submittedByUserId,
-              submittedByUserName:
-                asString(answerMessage.submittedByUserName) || submittedByUser?.name || "",
-              submitScenario: answerMessage.scenarioSnapshot || null,
-            }
-          : null,
-      };
-    });
+  return buildFollowupHistoryDetailedViewInModule({
+    sessionId,
+    session,
+    messages: store.messages,
+    compareIsoAsc,
+    asString,
+    getUserById,
+  });
 }
 
 function buildFollowupHistory(sessionId) {
-  const messages = store.messages
-    .filter((item) => item.sessionId === sessionId)
-    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt));
-  const answerByQuestionId = new Map(
-    messages
-      .filter((item) => item.kind === "followup_answer" && item.relatedMessageId)
-      .map((item) => [item.relatedMessageId, item]),
-  );
+  return buildFollowupHistoryViewInModule({
+    sessionId,
+    messages: store.messages,
+    compareIsoAsc,
+  });
+}
 
-  return messages
-    .filter((item) => item.kind === "followup_question")
-    .map((item) => ({
-      id: item.id,
-      round: Number(item.round) || 0,
-      question: item.content,
-      status: item.questionStatus || "pending_answer",
-      createdAt: item.createdAt,
-      scenarioSnapshot: item.scenarioSnapshot || null,
-      answer: answerByQuestionId.get(item.id)
-        ? {
-            id: answerByQuestionId.get(item.id).id,
-            content: answerByQuestionId.get(item.id).content,
-            createdAt: answerByQuestionId.get(item.id).createdAt,
-            scenarioSnapshot: answerByQuestionId.get(item.id).scenarioSnapshot || null,
-          }
-        : null,
-    }));
+function buildFollowupHistorySessionsForProject(projectId, limit) {
+  return buildFollowupHistorySessionsForProjectInModule({
+    sessions: store.sessions,
+    projectId,
+    limit,
+    compareIsoDesc,
+    buildFollowupHistorySessionView,
+  });
+}
+
+function buildFollowupHistoryPayload(projectId, sessions) {
+  return buildFollowupHistoryPayloadInModule({
+    projectId,
+    generatedAt: nowIso(),
+    sessions,
+  });
 }
 
 function buildFollowupQuestionView(message) {
-  return {
-    id: message.id,
-    round: Number(message.round) || 0,
-    question: message.content,
-    status: message.questionStatus || "pending_answer",
-    createdAt: message.createdAt,
-    scenarioSnapshot: message.scenarioSnapshot || null,
-  };
+  return buildFollowupQuestionViewModelInModule(message);
 }
 
 function findPendingFollowupQuestions(sessionId) {
-  return store.messages
-    .filter(
-      (item) =>
-        item.sessionId === sessionId &&
-        item.kind === "followup_question" &&
-        item.questionStatus === "pending_answer",
-    )
-    .sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt));
+  return findPendingFollowupQuestionsForSessionInModule({
+    sessionId,
+    messages: store.messages,
+    compareIsoDesc,
+  });
 }
 
 function getFollowupSessionById(sessionId) {
@@ -2145,43 +2052,68 @@ function getFollowupSessionById(sessionId) {
 }
 
 function parseScenarioPayload(input) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return null;
-  }
-  return input;
+  return parseScenarioPayloadInputInModule(input);
 }
 
 function normalizeScenarioForStorage({ scenario, operation, project }) {
-  const stage = project ? getStageById(project.currentStageId) : null;
-  return {
-    operation: asString(operation),
-    projectId: asString(scenario?.projectId) || project?.id || "",
-    currentStageId: asString(scenario?.currentStageId) || project?.currentStageId || "",
-    currentStageName: asString(scenario?.currentStageName) || stage?.name || "",
-    activeTab: asString(scenario?.activeTab) || "entry",
-    templateId: asString(scenario?.templateId),
-    recordedAt: asString(scenario?.recordedAt) || nowIso(),
-  };
+  return normalizeScenarioForStorageViewInModule({
+    scenario,
+    operation,
+    project,
+    asString,
+    getStageById,
+    nowIso,
+  });
 }
 
-async function processIntake({ project, note, visitDate, followupSession, submitScenario, currentUser, reviewedSnapshot }) {
+async function processIntake({
+  project,
+  note,
+  visitDate,
+  departmentName,
+  followupSession,
+  submitScenario,
+  currentUser,
+  reviewedSnapshot,
+}) {
   const reviewedExtraction = reviewedSnapshot.extraction;
-  const departmentId = ensureDepartment(project.hospitalId, reviewedExtraction.department);
+  const departmentId = ensureDepartment(project.hospitalId, departmentName);
   const stageBeforeId = project.currentStageId;
   const stageAfterId = resolveStageId(reviewedExtraction.stageAfterUpdate);
   if (!stageAfterId) {
-    throw new Error(`Unknown stage returned by reviewed intake snapshot: ${reviewedExtraction.stageAfterUpdate}.`);
+    throw createStatusError(`Unknown stage returned by reviewed intake snapshot: ${reviewedExtraction.stageAfterUpdate}.`);
   }
   const issueTagIds = resolveIssueTagIds(reviewedExtraction.issues);
-  const contacts = reviewedExtraction.contacts.map((contact) =>
-    upsertHospitalContact({
-      hospitalId: project.hospitalId,
-      departmentId,
-      name: contact.name,
-      roleTitle: contact.role,
-      lastContactAt: `${visitDate}T09:00:00.000Z`,
-    }),
+  const touchedAt = `${visitDate}T09:00:00.000Z`;
+  const { resolvedContacts, contactResolutionByReviewId } = resolveReviewedContactSelections({
+    project,
+    reviewedContacts: reviewedExtraction.contacts,
+    touchedAt,
+  });
+  const structuredContactEntries = dedupeRenderedContactEntries(
+    resolvedContacts.map((item) => ({
+      contactId: item.finalContact.id,
+      name: item.finalContact.name,
+      role: item.finalContact.roleTitle || "",
+    })),
   );
+  const mentionMatches = buildMentionMatchesFromResolvedContacts(resolvedContacts);
+  const feedbackSummarySegments = buildTextSegmentsFromMentions({
+    text: reviewedExtraction.feedbackSummary,
+    matches: mentionMatches,
+  }).segments;
+  const blockersSegments = buildTextSegmentsFromMentions({
+    text: reviewedExtraction.blockers,
+    matches: mentionMatches,
+  }).segments;
+  const opportunitiesSegments = buildTextSegmentsFromMentions({
+    text: reviewedExtraction.opportunities,
+    matches: mentionMatches,
+  }).segments;
+  const nextStepSegments = buildTextSegmentsFromMentions({
+    text: reviewedExtraction.nextStep,
+    matches: mentionMatches,
+  }).segments;
 
   const session = {
     id: createId("session"),
@@ -2244,15 +2176,15 @@ async function processIntake({ project, note, visitDate, followupSession, submit
     sessionId: session.id,
     visitDate,
     departmentId,
-    contactEntries: contacts.map((contact) => ({
-      contactId: contact.id,
-      name: contact.name,
-      role: contact.roleTitle || "",
-    })),
+    contactEntries: structuredContactEntries,
     feedbackSummary: reviewedExtraction.feedbackSummary,
     blockers: reviewedExtraction.blockers,
     opportunities: reviewedExtraction.opportunities,
     nextStep: reviewedExtraction.nextStep,
+    feedbackSummarySegments,
+    blockersSegments,
+    opportunitiesSegments,
+    nextStepSegments,
     stageBeforeId,
     stageAfterId,
     managerAttentionNeeded: reviewedExtraction.managerAttentionNeeded,
@@ -2264,12 +2196,30 @@ async function processIntake({ project, note, visitDate, followupSession, submit
 
   const createdTasks = reviewedExtraction.nextActions.map((action) => {
     const assignee = resolveUserByName(action.assigneeName) || getUserById(project.ownerUserId) || currentUser;
+    const resolvedRelatedContactIds = resolveReviewedTaskRelatedContactIds({
+      rawRelatedContactIds: action.relatedContactIds,
+      project,
+      contactResolutionByReviewId,
+    });
+    const taskMentionMatches = buildMentionMatchesFromResolvedContacts(
+      resolvedContacts,
+      resolvedRelatedContactIds,
+    );
     const task = {
       id: createId("task"),
       projectId: project.id,
       updateId: update.id,
       title: action.title,
       description: `来源于 ${getHospitalById(project.hospitalId)?.name || "医院项目"} 的 AI 录入纪要。`,
+      titleSegments: buildTextSegmentsFromMentions({
+        text: action.title,
+        matches: taskMentionMatches,
+      }).segments,
+      descriptionSegments: buildTextSegmentsFromMentions({
+        text: `来源于 ${getHospitalById(project.hospitalId)?.name || "医院项目"} 的 AI 录入纪要。`,
+        matches: taskMentionMatches,
+      }).segments,
+      relatedContactIds: resolvedRelatedContactIds,
       assigneeUserId: assignee.id,
       dueAt: action.dueDate ? `${action.dueDate}T09:00:00.000Z` : null,
       status: "todo",
@@ -2282,10 +2232,14 @@ async function processIntake({ project, note, visitDate, followupSession, submit
   });
 
   project.currentStageId = stageAfterId;
-  project.lastFollowUpAt = `${visitDate}T09:00:00.000Z`;
+  project.lastFollowUpAt = touchedAt;
   project.nextAction = reviewedExtraction.nextStep || createdTasks[0]?.title || "";
+  project.nextActionSegments = reviewedExtraction.nextStep
+    ? nextStepSegments
+    : normalizeStoredTextSegments(createdTasks[0]?.titleSegments, createdTasks[0]?.title || "");
   project.nextActionDueAt = createdTasks[0]?.dueAt || null;
   project.latestSummary = reviewedExtraction.feedbackSummary;
+  project.latestSummarySegments = feedbackSummarySegments;
   project.managerAttentionNeeded = reviewedExtraction.managerAttentionNeeded;
   project.latestUpdateId = update.id;
   project.currentIssueTagIds = issueTagIds;
@@ -2330,11 +2284,226 @@ async function extractStructuredUpdate({ project, note, visitDate, followupSessi
   const followupContext = followupSession ? buildFollowupContextForExtraction(followupSession.id) : [];
   const prompt = buildExtractionPrompt({ project, note, visitDate, followupContext });
   const parsed = await runResponsesStructuredExtraction(prompt);
+  const normalizedExtraction = normalizeExtraction(parsed);
+  const previewResolved = buildPreviewResolvedExtraction({
+    project,
+    extraction: normalizedExtraction,
+  });
   return {
     source: "responses-api",
-    warnings: [],
-    extraction: normalizeExtraction(parsed),
+    warnings: previewResolved.warnings,
+    extraction: previewResolved.extraction,
   };
+}
+
+function buildPreviewResolvedExtraction({ project, extraction }) {
+  const resolvedContacts = asArray(extraction?.contacts).map((contact, index) => {
+    const matchedContacts = findHospitalContactsByExactName(project.hospitalId, contact.name);
+    const reviewContactId = buildIntakeReviewContactId(index);
+    if (matchedContacts.length === 1) {
+      return {
+        reviewContactId,
+        name: contact.name,
+        role: contact.role,
+        matchedContactId: matchedContacts[0].id,
+        resolutionStatus: "matched",
+        candidateContactIds: [],
+      };
+    }
+    if (!matchedContacts.length) {
+      return {
+        reviewContactId,
+        name: contact.name,
+        role: contact.role,
+        matchedContactId: "",
+        resolutionStatus: "new",
+        candidateContactIds: [],
+      };
+    }
+    return {
+      reviewContactId,
+      name: contact.name,
+      role: contact.role,
+      matchedContactId: "",
+      resolutionStatus: "conflict",
+      candidateContactIds: matchedContacts.map((item) => item.id),
+    };
+  });
+
+  return {
+    extraction: {
+      ...extraction,
+      contacts: resolvedContacts,
+      nextActions: asArray(extraction?.nextActions).map((item) => ({
+        ...item,
+        relatedContactIds: buildDefaultNextActionRelatedContactIds(item.title, resolvedContacts),
+      })),
+    },
+    warnings: resolvedContacts
+      .filter((item) => item.resolutionStatus === "conflict")
+      .map((item) => `联系人“${item.name}”命中多个同名关键联系人，提交前必须手动确认。`),
+  };
+}
+
+function buildDefaultNextActionRelatedContactIds(title, contacts) {
+  const normalizedTitle = asText(title);
+  if (!normalizedTitle) {
+    return [];
+  }
+  return uniqueStrings(
+    asArray(contacts)
+      .filter((item) => item?.name && normalizedTitle.includes(item.name))
+      .map((item) => item.reviewContactId)
+      .filter(Boolean),
+  );
+}
+
+function resolveReviewedContactSelections({ project, reviewedContacts, touchedAt }) {
+  const resolvedContacts = [];
+  const resolutionByReviewId = new Map();
+  const seenReviewContactIds = new Set();
+
+  for (const reviewedContact of asArray(reviewedContacts)) {
+    const reviewContactId = clipText(asString(reviewedContact.reviewContactId), 80);
+    if (!reviewContactId) {
+      throw createStatusError("reviewedSnapshot.extraction.contacts[].reviewContactId is required.");
+    }
+    if (seenReviewContactIds.has(reviewContactId)) {
+      throw createStatusError(`Duplicate reviewed contact id: ${reviewContactId}.`);
+    }
+    seenReviewContactIds.add(reviewContactId);
+
+    const matchedContactId = clipText(asString(reviewedContact.matchedContactId), 80);
+    let finalContact;
+    if (matchedContactId) {
+      const existingContact = getContactById(matchedContactId);
+      if (!existingContact) {
+        throw createStatusError(`Selected contact not found: ${matchedContactId}. Please regenerate the preview.`);
+      }
+      if (existingContact.hospitalId !== project.hospitalId) {
+        throw createStatusError(`Selected contact ${matchedContactId} does not belong to the current hospital.`);
+      }
+      finalContact = applyMatchedContactTouch({
+        contact: existingContact,
+        roleTitle: reviewedContact.role,
+        touchedAt,
+      });
+    } else {
+      if (reviewedContact.resolutionStatus === "conflict") {
+        throw createStatusError(`联系人“${reviewedContact.name}”存在同名冲突，请先手动确认后再提交。`);
+      }
+      const exactMatchesNow = findHospitalContactsByExactName(project.hospitalId, reviewedContact.name);
+      if (exactMatchesNow.length) {
+        if (exactMatchesNow.length > 1 || reviewedContact.resolutionStatus === "conflict") {
+          throw createStatusError(`联系人“${reviewedContact.name}”存在同名冲突，请重新生成纪要并手动确认。`);
+        }
+        throw createStatusError(`联系人“${reviewedContact.name}”的自动关联结果已变化，请重新生成纪要。`);
+      }
+      finalContact = createHospitalContactRecord({
+        hospitalId: project.hospitalId,
+        name: reviewedContact.name,
+        roleTitle: reviewedContact.role,
+        touchedAt,
+      });
+    }
+
+    const resolvedItem = {
+      reviewContactId,
+      mentionName: reviewedContact.name,
+      finalContact,
+    };
+    resolvedContacts.push(resolvedItem);
+    resolutionByReviewId.set(reviewContactId, resolvedItem);
+  }
+
+  return {
+    resolvedContacts,
+    contactResolutionByReviewId: resolutionByReviewId,
+  };
+}
+
+function resolveReviewedTaskRelatedContactIds({ rawRelatedContactIds, project, contactResolutionByReviewId }) {
+  const resolved = [];
+  for (const rawId of normalizeStringIdArray(rawRelatedContactIds)) {
+    if (contactResolutionByReviewId instanceof Map && contactResolutionByReviewId.has(rawId)) {
+      resolved.push(contactResolutionByReviewId.get(rawId).finalContact.id);
+      continue;
+    }
+    const existingContact = getContactById(rawId);
+    if (!existingContact) {
+      throw createStatusError(`Task related contact not found: ${rawId}. Please regenerate the preview.`);
+    }
+    if (existingContact.hospitalId !== project.hospitalId) {
+      throw createStatusError(`Task related contact ${rawId} does not belong to the current hospital.`);
+    }
+    resolved.push(existingContact.id);
+  }
+  return uniqueStrings(resolved);
+}
+
+function buildMentionMatchesFromResolvedContacts(resolvedContacts, extraContactIds = []) {
+  const matches = [];
+  for (const item of asArray(resolvedContacts)) {
+    const contactId = clipText(asString(item?.finalContact?.id), 80);
+    const mentionName = clipText(asString(item?.mentionName), 120);
+    if (!contactId || !mentionName) {
+      continue;
+    }
+    matches.push({
+      contactId,
+      matchText: mentionName,
+      fallbackText: mentionName,
+    });
+  }
+  for (const contactId of resolveExistingContactIds(extraContactIds)) {
+    const contact = getContactById(contactId);
+    if (!contact?.name) {
+      continue;
+    }
+    matches.push({
+      contactId: contact.id,
+      matchText: contact.name,
+      fallbackText: contact.name,
+    });
+  }
+  return matches;
+}
+
+function applyMatchedContactTouch({ contact, roleTitle, touchedAt }) {
+  contact.roleTitle = clipText(asString(roleTitle), 40) || contact.roleTitle || "";
+  contact.lastContactAt = touchedAt || contact.lastContactAt || nowIso();
+  return contact;
+}
+
+function createHospitalContactRecord({ hospitalId, name, roleTitle, touchedAt }) {
+  const normalizedName = clipText(asString(name), 40);
+  if (!normalizedName) {
+    throw new Error("New contact name is required.");
+  }
+  const created = {
+    id: createId("contact"),
+    hospitalId,
+    departmentId: null,
+    name: normalizedName,
+    roleTitle: clipText(asString(roleTitle), 40),
+    lastContactAt: touchedAt || nowIso(),
+  };
+  store.contacts.push(created);
+  return created;
+}
+
+function buildIntakeReviewContactId(index) {
+  return `intake-contact-${index + 1}`;
+}
+
+function findHospitalContactsByExactName(hospitalId, name) {
+  const normalizedName = asString(name).toLowerCase();
+  if (!hospitalId || !normalizedName) {
+    return [];
+  }
+  return store.contacts.filter(
+    (item) => item.hospitalId === hospitalId && asString(item.name).toLowerCase() === normalizedName,
+  );
 }
 
 function buildExtractionPrompt({ project, note, visitDate, followupContext = [] }) {
@@ -2372,16 +2541,10 @@ function buildExtractionPrompt({ project, note, visitDate, followupContext = [] 
 }
 
 function buildFollowupContextForExtraction(sessionId) {
-  if (!sessionId) {
-    return [];
-  }
-  return buildFollowupHistory(sessionId)
-    .filter((item) => item.answer?.content)
-    .map((item) => ({
-      question: item.question,
-      answer: item.answer?.content || "",
-      status: item.status || "answered",
-    }));
+  return buildFollowupContextForExtractionInModule({
+    sessionId,
+    buildFollowupHistory,
+  });
 }
 
 async function runResponsesStructuredExtraction(prompt) {
@@ -2497,8 +2660,7 @@ function normalizeExtraction(raw) {
   }
 
   return {
-    department: clipText(asString(raw.department), 80),
-    contacts: ensureUniqueByName(
+    contacts: dedupeContactMentions(
       asArray(raw.contacts).map((item) => ({
         name: clipText(asString(item?.name), 40),
         role: clipText(asString(item?.role), 40),
@@ -2538,8 +2700,12 @@ function normalizeReviewedIntakeExtraction(raw) {
       throw new Error(`reviewedSnapshot.extraction.contacts[${index}] is invalid.`);
     }
     return {
+      reviewContactId: clipText(asString(item.reviewContactId), 80),
       name: clipText(asString(item.name), 40),
       role: clipText(asString(item.role), 40),
+      matchedContactId: clipText(asString(item.matchedContactId), 80),
+      resolutionStatus: normalizeReviewedContactResolutionStatus(item.resolutionStatus),
+      candidateContactIds: normalizeStringIdArray(item.candidateContactIds),
     };
   });
 
@@ -2557,6 +2723,7 @@ function normalizeReviewedIntakeExtraction(raw) {
       title,
       assigneeName: clipText(asString(item.assigneeName), 40),
       dueDate: normalizeDateOnly(item.dueDate),
+      relatedContactIds: normalizeStringIdArray(item.relatedContactIds),
     };
   });
 
@@ -2576,8 +2743,7 @@ function normalizeReviewedIntakeExtraction(raw) {
   );
 
   return {
-    department: clipText(asString(raw.department), 80),
-    contacts: ensureUniqueByName(contacts).filter((item) => item.name),
+    contacts: dedupeContactMentions(contacts).filter((item) => item.name && item.reviewContactId),
     feedbackSummary,
     blockers,
     opportunities,
@@ -2644,32 +2810,381 @@ function ensureDepartment(hospitalId, departmentName) {
   return department.id;
 }
 
-function upsertHospitalContact({ hospitalId, departmentId, name, roleTitle, lastContactAt }) {
-  const normalizedName = clipText(asString(name), 40);
-  if (!normalizedName) {
-    return { id: null, name: "", roleTitle: "" };
+function listHospitalDepartmentNames(hospitalId) {
+  const normalizedHospitalId = asString(hospitalId);
+  if (!normalizedHospitalId) {
+    return [];
   }
 
-  const existing = store.contacts.find(
-    (item) => item.hospitalId === hospitalId && item.name.toLowerCase() === normalizedName.toLowerCase(),
-  );
-  if (existing) {
-    existing.departmentId = departmentId || existing.departmentId || null;
-    existing.roleTitle = clipText(asString(roleTitle), 40) || existing.roleTitle || "";
-    existing.lastContactAt = lastContactAt || existing.lastContactAt || nowIso();
-    return existing;
+  const seen = new Set();
+  const suggestions = [];
+  for (const department of asArray(store.departments)) {
+    if (asString(department?.hospitalId) !== normalizedHospitalId) {
+      continue;
+    }
+    const name = clipText(asString(department?.name), 80);
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    suggestions.push(name);
+  }
+  return suggestions;
+}
+
+function normalizeEditableContacts(rawContacts) {
+  if (rawContacts.length > 100) {
+    throw new Error("contacts cannot exceed 100 entries.");
   }
 
-  const contact = {
-    id: createId("contact"),
-    hospitalId,
-    departmentId: departmentId || null,
-    name: normalizedName,
-    roleTitle: clipText(asString(roleTitle), 40),
-    lastContactAt: lastContactAt || nowIso(),
+  const normalizedContacts = rawContacts.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`contacts[${index}] is invalid.`);
+    }
+
+    const id = clipText(asString(item.id), 80);
+    const name = clipText(asString(item.name), 40);
+    const roleTitle = clipText(asString(item.roleTitle || item.role), 40);
+    if (!name) {
+      throw new Error(`contacts[${index}].name is required.`);
+    }
+
+    return {
+      id,
+      name,
+      roleTitle,
+    };
+  });
+  validateDistinctEditableContacts(normalizedContacts, "contacts");
+  return normalizedContacts;
+}
+
+function validateDistinctEditableContacts(contacts, pathLabel = "contacts") {
+  const exactIdentitySeen = new Set();
+  const duplicateNameBuckets = new Map();
+
+  contacts.forEach((item, index) => {
+    const nameKey = asString(item?.name).toLowerCase();
+    const roleKey = asString(item?.roleTitle).toLowerCase();
+    const identityKey = `${nameKey}::${roleKey}`;
+    if (exactIdentitySeen.has(identityKey)) {
+      throw new Error(
+        `${pathLabel}[${index}] duplicates another contact with the same name and role.`,
+      );
+    }
+    exactIdentitySeen.add(identityKey);
+    if (!duplicateNameBuckets.has(nameKey)) {
+      duplicateNameBuckets.set(nameKey, []);
+    }
+    duplicateNameBuckets.get(nameKey).push({
+      index,
+      roleTitle: asString(item?.roleTitle),
+    });
+  });
+
+  for (const [nameKey, rows] of duplicateNameBuckets.entries()) {
+    if (!nameKey || rows.length < 2) {
+      continue;
+    }
+    for (const row of rows) {
+      if (!row.roleTitle) {
+        throw new Error(
+          `${pathLabel}[${row.index}] must include roleTitle when the same hospital has duplicate contact names.`,
+        );
+      }
+    }
+  }
+}
+
+function dedupeRenderedContactEntries(rawEntries) {
+  const deduped = [];
+  const seen = new Set();
+  for (const entry of normalizeStoredContactEntries(rawEntries)) {
+    const key = entry.contactId || `${entry.name.toLowerCase()}::${entry.role.toLowerCase()}`;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(entry);
+  }
+  return deduped;
+}
+
+function normalizeEditableOriginalContacts(rawOriginalContacts) {
+  if (rawOriginalContacts === undefined || rawOriginalContacts === null) {
+    return [];
+  }
+  if (!Array.isArray(rawOriginalContacts)) {
+    throw new Error("originalContacts must be an array.");
+  }
+  if (rawOriginalContacts.length > 200) {
+    throw new Error("originalContacts cannot exceed 200 entries.");
+  }
+  return rawOriginalContacts
+    .map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error(`originalContacts[${index}] is invalid.`);
+      }
+      return {
+        id: clipText(asString(item.id), 80),
+        name: clipText(asString(item.name), 40),
+        roleTitle: clipText(asString(item.roleTitle || item.role), 40),
+      };
+    })
+    .filter((item) => item.id || item.name);
+}
+
+function normalizeEditableContactSnapshot(rawSnapshot, pathLabel) {
+  if (!rawSnapshot || typeof rawSnapshot !== "object" || Array.isArray(rawSnapshot)) {
+    if (rawSnapshot === undefined || rawSnapshot === null) {
+      return {
+        name: "",
+        roleTitle: "",
+      };
+    }
+    throw new Error(`${pathLabel} is invalid.`);
+  }
+  return {
+    name: clipText(asString(rawSnapshot.name), 40),
+    roleTitle: clipText(asString(rawSnapshot.roleTitle || rawSnapshot.role), 40),
   };
-  store.contacts.push(contact);
-  return contact;
+}
+
+function normalizeEditableContactMergeActions(rawMergeActions) {
+  if (rawMergeActions === undefined || rawMergeActions === null) {
+    return [];
+  }
+  if (!Array.isArray(rawMergeActions)) {
+    throw new Error("mergeActions must be an array.");
+  }
+  if (rawMergeActions.length > 200) {
+    throw new Error("mergeActions cannot exceed 200 entries.");
+  }
+  return rawMergeActions.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`mergeActions[${index}] is invalid.`);
+    }
+    return {
+      sourceContactId: clipText(asString(item.sourceContactId), 80),
+      targetContactId: clipText(asString(item.targetContactId), 80),
+      sourceSnapshot: normalizeEditableContactSnapshot(item.sourceSnapshot, `mergeActions[${index}].sourceSnapshot`),
+      targetSnapshot: normalizeEditableContactSnapshot(item.targetSnapshot, `mergeActions[${index}].targetSnapshot`),
+    };
+  });
+}
+
+function validateEditableContactMergeActions({ mergeActions, contacts, originalContacts }) {
+  const sourceIdSeen = new Set();
+  const originalIds = new Set(
+    originalContacts
+      .map((item) => asString(item.id))
+      .filter(Boolean),
+  );
+  const finalIds = new Set(
+    contacts
+      .map((item) => asString(item.id))
+      .filter(Boolean),
+  );
+
+  mergeActions.forEach((action, index) => {
+    const sourceContactId = asString(action.sourceContactId);
+    const targetContactId = asString(action.targetContactId);
+    const hasSourceSnapshotName = Boolean(asString(action.sourceSnapshot?.name));
+    const hasTargetSnapshotName = Boolean(asString(action.targetSnapshot?.name));
+
+    if (!sourceContactId && !targetContactId && !hasSourceSnapshotName && !hasTargetSnapshotName) {
+      throw new Error(`mergeActions[${index}] is empty.`);
+    }
+    if (sourceContactId && sourceIdSeen.has(sourceContactId)) {
+      throw new Error(`mergeActions[${index}].sourceContactId is duplicated.`);
+    }
+    if (sourceContactId) {
+      sourceIdSeen.add(sourceContactId);
+    }
+    if (sourceContactId && targetContactId && sourceContactId === targetContactId) {
+      throw new Error(`mergeActions[${index}] sourceContactId and targetContactId cannot be the same.`);
+    }
+    if (sourceContactId && !targetContactId) {
+      throw new Error(`mergeActions[${index}].targetContactId is required when sourceContactId is provided.`);
+    }
+    if (targetContactId && !finalIds.has(targetContactId)) {
+      throw new Error(`mergeActions[${index}].targetContactId does not exist in final contacts.`);
+    }
+    if (sourceContactId && originalIds.size && !originalIds.has(sourceContactId) && !sourceContactId.startsWith("draft-")) {
+      throw new Error(`mergeActions[${index}].sourceContactId does not exist in originalContacts.`);
+    }
+  });
+}
+
+function replaceHospitalContacts({ hospitalId, contacts, touchedAt }) {
+  const existingById = new Map();
+  for (const contact of store.contacts) {
+    if (contact.hospitalId !== hospitalId) {
+      continue;
+    }
+    existingById.set(contact.id, contact);
+  }
+
+  const keepIds = new Set();
+  const resolvedContacts = [];
+  const resolvedTouchedAt = touchedAt || nowIso();
+  for (const contactInput of contacts) {
+    let existing = asString(contactInput.id) ? existingById.get(asString(contactInput.id)) : null;
+    if (existing) {
+      existing.name = contactInput.name;
+      existing.roleTitle = contactInput.roleTitle;
+      existing.departmentId = null;
+      existing.lastContactAt = resolvedTouchedAt;
+      keepIds.add(existing.id);
+      resolvedContacts.push({
+        id: existing.id,
+        name: existing.name,
+        roleTitle: existing.roleTitle || "",
+      });
+      continue;
+    }
+
+    const created = {
+      id: createId("contact"),
+      hospitalId,
+      departmentId: null,
+      name: contactInput.name,
+      roleTitle: contactInput.roleTitle,
+      lastContactAt: resolvedTouchedAt,
+    };
+    store.contacts.push(created);
+    keepIds.add(created.id);
+    resolvedContacts.push({
+      id: created.id,
+      name: created.name,
+      roleTitle: created.roleTitle || "",
+    });
+  }
+
+  store.contacts = store.contacts.filter((item) => item.hospitalId !== hospitalId || keepIds.has(item.id));
+  return resolvedContacts;
+}
+
+function buildContactPropagationChanges({ originalContacts, contacts, mergeActions }) {
+  const originalById = new Map();
+  for (const item of originalContacts) {
+    const id = asString(item.id);
+    if (!id || originalById.has(id)) {
+      continue;
+    }
+    originalById.set(id, {
+      contactId: id,
+      name: asString(item.name),
+      roleTitle: asString(item.roleTitle),
+    });
+  }
+
+  const finalById = new Map();
+  for (const item of contacts) {
+    const id = asString(item.id);
+    if (!id || finalById.has(id)) {
+      continue;
+    }
+    finalById.set(id, {
+      contactId: id,
+      name: asString(item.name),
+      roleTitle: asString(item.roleTitle),
+    });
+  }
+
+  const sourceToFinal = new Map();
+  for (const sourceId of originalById.keys()) {
+    const sameIdFinal = finalById.get(sourceId);
+    if (sameIdFinal) {
+      sourceToFinal.set(sourceId, sameIdFinal);
+    }
+  }
+  for (const action of mergeActions) {
+    const sourceId = asString(action.sourceContactId);
+    const targetId = asString(action.targetContactId);
+    if (!sourceId || !targetId) {
+      continue;
+    }
+    const targetFinal = finalById.get(targetId);
+    if (!targetFinal) {
+      continue;
+    }
+    sourceToFinal.set(sourceId, targetFinal);
+  }
+
+  const changes = [];
+  for (const [sourceContactId, toContact] of sourceToFinal.entries()) {
+    const fromContact = originalById.get(sourceContactId);
+    if (!fromContact || !toContact) {
+      continue;
+    }
+    if (!toContact.contactId || sourceContactId === toContact.contactId) {
+      continue;
+    }
+    changes.push({
+      sourceContactId,
+      from: fromContact,
+      to: toContact,
+    });
+  }
+  return changes;
+}
+
+function applyProjectContactPropagation({ project, originalContacts, contacts, mergeActions }) {
+  const changes = buildContactPropagationChanges({
+    originalContacts,
+    contacts,
+    mergeActions,
+  });
+  if (!changes.length) {
+    return;
+  }
+
+  const changeBySourceId = new Map(changes.map((item) => [item.sourceContactId, item]));
+
+  for (const update of store.updates) {
+    if (update.projectId !== project.id) {
+      continue;
+    }
+    if (Array.isArray(update.contactEntries)) {
+      for (const entry of update.contactEntries) {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          continue;
+        }
+        const entryContactId = asString(entry.contactId);
+        const change = entryContactId ? changeBySourceId.get(entryContactId) || null : null;
+        if (!change) {
+          continue;
+        }
+        entry.contactId = change.to.contactId;
+        entry.name = change.to.name;
+        entry.role = change.to.roleTitle || "";
+      }
+      update.contactEntries = dedupeRenderedContactEntries(update.contactEntries);
+    }
+
+    update.feedbackSummarySegments = replaceStoredTextSegmentContactIds(update.feedbackSummarySegments, changeBySourceId);
+    update.blockersSegments = replaceStoredTextSegmentContactIds(update.blockersSegments, changeBySourceId);
+    update.opportunitiesSegments = replaceStoredTextSegmentContactIds(update.opportunitiesSegments, changeBySourceId);
+    update.nextStepSegments = replaceStoredTextSegmentContactIds(update.nextStepSegments, changeBySourceId);
+  }
+
+  for (const task of store.tasks) {
+    if (task.projectId !== project.id) {
+      continue;
+    }
+    task.relatedContactIds = normalizeStringIdArray(
+      normalizeStringIdArray(task.relatedContactIds).map((contactId) =>
+        changeBySourceId.get(contactId)?.to?.contactId || contactId,
+      ),
+    );
+    task.titleSegments = replaceStoredTextSegmentContactIds(task.titleSegments, changeBySourceId);
+    task.descriptionSegments = replaceStoredTextSegmentContactIds(task.descriptionSegments, changeBySourceId);
+  }
+
+  project.latestSummarySegments = replaceStoredTextSegmentContactIds(project.latestSummarySegments, changeBySourceId);
+  project.nextActionSegments = replaceStoredTextSegmentContactIds(project.nextActionSegments, changeBySourceId);
 }
 
 function resolveUserByName(name) {
@@ -2747,11 +3262,18 @@ function loadOrCreateStore() {
       throw new Error(`Missing seed store at ${SEED_STORE_PATH}`);
     }
     const seeded = JSON.parse(readFileSync(SEED_STORE_PATH, "utf8"));
-    writeFileSync(STORE_PATH, JSON.stringify(seeded, null, 2), "utf8");
-    return normalizeStoreShape(seeded);
+    const normalizedSeeded = normalizeStoreShape(seeded);
+    writeFileSync(STORE_PATH, JSON.stringify(normalizedSeeded, null, 2), "utf8");
+    return normalizedSeeded;
   }
 
-  return normalizeStoreShape(JSON.parse(readFileSync(STORE_PATH, "utf8")));
+  const rawStoreText = readFileSync(STORE_PATH, "utf8");
+  const normalizedStore = normalizeStoreShape(JSON.parse(rawStoreText));
+  const normalizedStoreText = JSON.stringify(normalizedStore, null, 2);
+  if (normalizedStoreText !== rawStoreText) {
+    writeFileSync(STORE_PATH, normalizedStoreText, "utf8");
+  }
+  return normalizedStore;
 }
 
 function normalizeStoreShape(input) {
@@ -2767,7 +3289,7 @@ function normalizeStoreShape(input) {
       ? asString(input.currentUserId)
       : normalizedUsers[0]?.id || "";
 
-  return {
+  const normalizedStore = {
     meta: input.meta || { version: "0.1.0", createdAt: nowIso(), updatedAt: nowIso() },
     currentUserId,
     regions,
@@ -2776,22 +3298,712 @@ function normalizeStoreShape(input) {
     backupPolicy: normalizeBackupPolicy(input?.backupPolicy),
     hospitals: Array.isArray(input.hospitals) ? input.hospitals : [],
     departments: Array.isArray(input.departments) ? input.departments : [],
-    contacts: Array.isArray(input.contacts) ? input.contacts : [],
+    contacts: normalizeStoredContacts(Array.isArray(input.contacts) ? input.contacts : []),
     stages: Array.isArray(input.stages) ? input.stages : [],
     issueTags: Array.isArray(input.issueTags) ? input.issueTags : [],
-    projects: Array.isArray(input.projects) ? input.projects : [],
-    updates: Array.isArray(input.updates) ? input.updates : [],
-    tasks: Array.isArray(input.tasks) ? input.tasks : [],
+    projects: normalizeStoredProjects(Array.isArray(input.projects) ? input.projects : []),
+    updates: normalizeStoredUpdates(Array.isArray(input.updates) ? input.updates : []),
+    tasks: normalizeStoredTasks(Array.isArray(input.tasks) ? input.tasks : []),
     remarks: Array.isArray(input.remarks) ? input.remarks : [],
     sessions: Array.isArray(input.sessions) ? input.sessions : [],
     messages: Array.isArray(input.messages) ? input.messages : [],
   };
+  migrateStoreContactReferences(normalizedStore);
+  return normalizedStore;
+}
+
+function normalizeStoredContacts(records) {
+  const usedIds = new Set();
+  return asArray(records)
+    .map((item) => {
+      const normalized = {
+        ...item,
+        id: takeNormalizedRecordId(item?.id, usedIds, "contact"),
+        hospitalId: clipText(asString(item?.hospitalId), 80),
+        departmentId: clipText(asString(item?.departmentId), 80),
+        name: clipText(asString(item?.name), 40),
+        roleTitle: clipText(asString(item?.roleTitle || item?.role), 40),
+        lastContactAt: asString(item?.lastContactAt) || nowIso(),
+      };
+      if (!normalized.hospitalId || !normalized.name) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter(Boolean);
+}
+
+function normalizeStoredProjects(records) {
+  const usedIds = new Set();
+  return asArray(records)
+    .map((item) => {
+      const normalized = {
+        ...item,
+        id: takeNormalizedRecordId(item?.id, usedIds, "project"),
+        hospitalId: clipText(asString(item?.hospitalId), 80),
+        regionId: clipText(asString(item?.regionId), 80),
+        ownerUserId: clipText(asString(item?.ownerUserId), 80),
+        currentStageId: clipText(asString(item?.currentStageId), 80),
+        riskLevel: asString(item?.riskLevel) || "normal",
+        managerAttentionNeeded: Boolean(item?.managerAttentionNeeded),
+        lastFollowUpAt: asString(item?.lastFollowUpAt),
+        nextAction: asText(item?.nextAction),
+        nextActionDueAt: asString(item?.nextActionDueAt) || null,
+        latestSummary: asText(item?.latestSummary),
+        currentIssueTagIds: normalizeStringIdArray(item?.currentIssueTagIds),
+        latestUpdateId: clipText(asString(item?.latestUpdateId), 80),
+        initialDepartmentId: clipText(asString(item?.initialDepartmentId), 80),
+        nextActionSegments: normalizeStoredTextSegments(item?.nextActionSegments, item?.nextAction),
+        latestSummarySegments: normalizeStoredTextSegments(item?.latestSummarySegments, item?.latestSummary),
+        contactReferenceWarnings: normalizeStoredReferenceWarnings(item?.contactReferenceWarnings),
+      };
+      if (!normalized.hospitalId) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter(Boolean);
+}
+
+function normalizeStoredUpdates(records) {
+  const usedIds = new Set();
+  return asArray(records)
+    .map((item) => {
+      const normalized = {
+        ...item,
+        id: takeNormalizedRecordId(item?.id, usedIds, "update"),
+        projectId: clipText(asString(item?.projectId), 80),
+        createdByUserId: clipText(asString(item?.createdByUserId), 80),
+        sessionId: clipText(asString(item?.sessionId), 80),
+        visitDate: normalizeDateOnly(item?.visitDate),
+        departmentId: clipText(asString(item?.departmentId), 80),
+        contactEntries: normalizeStoredContactEntries(item?.contactEntries),
+        feedbackSummary: asText(item?.feedbackSummary),
+        blockers: asText(item?.blockers),
+        opportunities: asText(item?.opportunities),
+        nextStep: asText(item?.nextStep),
+        feedbackSummarySegments: normalizeStoredTextSegments(item?.feedbackSummarySegments, item?.feedbackSummary),
+        blockersSegments: normalizeStoredTextSegments(item?.blockersSegments, item?.blockers),
+        opportunitiesSegments: normalizeStoredTextSegments(item?.opportunitiesSegments, item?.opportunities),
+        nextStepSegments: normalizeStoredTextSegments(item?.nextStepSegments, item?.nextStep),
+        issueTagIds: normalizeStringIdArray(item?.issueTagIds),
+        stageBeforeId: clipText(asString(item?.stageBeforeId), 80),
+        stageAfterId: clipText(asString(item?.stageAfterId), 80),
+        managerAttentionNeeded: Boolean(item?.managerAttentionNeeded),
+        sourceNote: asText(item?.sourceNote),
+        createdAt: asString(item?.createdAt) || nowIso(),
+        contactReferenceWarnings: normalizeStoredReferenceWarnings(item?.contactReferenceWarnings),
+      };
+      if (!normalized.projectId) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter(Boolean);
+}
+
+function normalizeStoredTasks(records) {
+  const usedIds = new Set();
+  return asArray(records)
+    .map((item) => {
+      const dueAt = asString(item?.dueAt) || null;
+      const normalized = {
+        ...item,
+        id: takeNormalizedRecordId(item?.id, usedIds, "task"),
+        projectId: clipText(asString(item?.projectId), 80),
+        updateId: clipText(asString(item?.updateId), 80),
+        title: asText(item?.title),
+        description: asText(item?.description),
+        titleSegments: normalizeStoredTextSegments(item?.titleSegments, item?.title),
+        descriptionSegments: normalizeStoredTextSegments(item?.descriptionSegments, item?.description),
+        relatedContactIds: normalizeStringIdArray(item?.relatedContactIds),
+        assigneeUserId: clipText(asString(item?.assigneeUserId), 80),
+        dueAt,
+        initialDueAt: asString(item?.initialDueAt) || dueAt,
+        dueDateHistory: normalizeStoredTaskDueDateHistory(item?.dueDateHistory),
+        records: normalizeStoredTaskRecords(item?.records),
+        status: asString(item?.status) || "todo",
+        priority: asString(item?.priority) || "medium",
+        completedAt: asString(item?.completedAt) || null,
+        createdAt: asString(item?.createdAt) || nowIso(),
+        contactReferenceWarnings: normalizeStoredReferenceWarnings(item?.contactReferenceWarnings),
+      };
+      if (!normalized.projectId) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter(Boolean);
+}
+
+function normalizeStoredTaskDueDateHistory(records) {
+  const usedIds = new Set();
+  return asArray(records)
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+      const normalized = {
+        id: takeNormalizedRecordId(item?.id, usedIds, "task-due"),
+        previousDueAt: asString(item?.previousDueAt) || null,
+        nextDueAt: asString(item?.nextDueAt) || null,
+        changedAt: asString(item?.changedAt) || nowIso(),
+        changedByUserId: clipText(asString(item?.changedByUserId), 80),
+      };
+      if (!normalized.nextDueAt) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter(Boolean)
+    .sort((left, right) => compareIsoAsc(left.changedAt, right.changedAt));
+}
+
+function normalizeStoredTaskRecords(records) {
+  const usedIds = new Set();
+  return asArray(records)
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+      const normalized = {
+        id: takeNormalizedRecordId(item?.id, usedIds, "task-record"),
+        content: clipText(asString(item?.content), 1000),
+        createdAt: asString(item?.createdAt) || nowIso(),
+        createdByUserId: clipText(asString(item?.createdByUserId), 80),
+      };
+      if (!normalized.content) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter(Boolean)
+    .sort((left, right) => compareIsoAsc(left.createdAt, right.createdAt));
+}
+
+function normalizeStoredContactEntries(rawEntries) {
+  return asArray(rawEntries)
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return null;
+      }
+      const normalized = {
+        contactId: clipText(asString(item.contactId), 80),
+        name: clipText(asString(item.name), 40),
+        role: clipText(asString(item.role), 40),
+      };
+      if (!normalized.contactId && !normalized.name) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter(Boolean);
+}
+
+function normalizeStoredTextSegments(rawSegments, fallbackText = "") {
+  if (!Array.isArray(rawSegments) || !rawSegments.length) {
+    const text = asText(fallbackText);
+    return text ? [{ type: "text", text }] : [];
+  }
+
+  const normalized = [];
+  for (const item of rawSegments) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    if (item.type === "contact") {
+      const contactId = clipText(asString(item.contactId), 80);
+      const fallbackValue = clipText(asText(item.fallbackText || item.text || item.name), 120);
+      if (!contactId && !fallbackValue) {
+        continue;
+      }
+      normalized.push({
+        type: "contact",
+        contactId,
+        fallbackText: fallbackValue,
+      });
+      continue;
+    }
+
+    const text = asText(item.text || item.value);
+    if (!text) {
+      continue;
+    }
+    normalized.push({ type: "text", text });
+  }
+  return coalesceStoredTextSegments(normalized);
+}
+
+function normalizeStoredReferenceWarnings(rawWarnings) {
+  if (!Array.isArray(rawWarnings)) {
+    return [];
+  }
+  const deduped = [];
+  const seen = new Set();
+  for (const item of rawWarnings) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const normalized = {
+      field: clipText(asString(item.field), 80),
+      name: clipText(asString(item.name), 80),
+      reason: clipText(asString(item.reason), 80) || "ambiguous-name",
+      message: clipText(asText(item.message), 240),
+    };
+    if (!normalized.field || !normalized.name) {
+      continue;
+    }
+    const key = `${normalized.field}::${normalized.name.toLowerCase()}::${normalized.reason}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(normalized);
+  }
+  return deduped;
+}
+
+function takeNormalizedRecordId(rawId, usedIds, prefix) {
+  let resolvedId = clipText(asString(rawId), 80) || createId(prefix);
+  while (!resolvedId || usedIds.has(resolvedId)) {
+    resolvedId = createId(prefix);
+  }
+  usedIds.add(resolvedId);
+  return resolvedId;
+}
+
+function normalizeStringIdArray(rawValues) {
+  return uniqueStrings(asArray(rawValues).map((item) => clipText(asString(item), 80)).filter(Boolean));
+}
+
+function coalesceStoredTextSegments(segments) {
+  const normalized = [];
+  for (const segment of asArray(segments)) {
+    if (!segment || typeof segment !== "object" || Array.isArray(segment)) {
+      continue;
+    }
+    if (segment.type === "text") {
+      const text = asText(segment.text);
+      if (!text) {
+        continue;
+      }
+      const previous = normalized[normalized.length - 1];
+      if (previous?.type === "text") {
+        previous.text += text;
+      } else {
+        normalized.push({ type: "text", text });
+      }
+      continue;
+    }
+    if (segment.type === "contact") {
+      const contactId = clipText(asString(segment.contactId), 80);
+      const fallbackText = clipText(asText(segment.fallbackText), 120);
+      if (!contactId && !fallbackText) {
+        continue;
+      }
+      normalized.push({
+        type: "contact",
+        contactId,
+        fallbackText,
+      });
+    }
+  }
+  return normalized;
+}
+
+function migrateStoreContactReferences(targetStore) {
+  const projectById = new Map(targetStore.projects.map((item) => [item.id, item]));
+  const updatesByProjectId = new Map();
+  const tasksByProjectId = new Map();
+  const updatesById = new Map();
+
+  for (const update of targetStore.updates) {
+    update.contactEntries = normalizeStoredContactEntries(update.contactEntries);
+    updatesById.set(update.id, update);
+    if (!updatesByProjectId.has(update.projectId)) {
+      updatesByProjectId.set(update.projectId, []);
+    }
+    updatesByProjectId.get(update.projectId).push(update);
+  }
+
+  for (const task of targetStore.tasks) {
+    task.relatedContactIds = normalizeStringIdArray(task.relatedContactIds);
+    if (!tasksByProjectId.has(task.projectId)) {
+      tasksByProjectId.set(task.projectId, []);
+    }
+    tasksByProjectId.get(task.projectId).push(task);
+  }
+
+  for (const updates of updatesByProjectId.values()) {
+    updates.sort((left, right) => compareIsoDesc(left.createdAt, right.createdAt));
+  }
+
+  for (const update of targetStore.updates) {
+    const project = projectById.get(update.projectId);
+    const hospitalId = asString(project?.hospitalId);
+    const preferredMentions = update.contactEntries.map((entry) => ({
+      contactId: entry.contactId,
+      matchText: entry.name,
+    }));
+    const warnings = [];
+    warnings.push(
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: update,
+        legacyField: "feedbackSummary",
+        segmentField: "feedbackSummarySegments",
+        hospitalId,
+        preferredMentions,
+      }),
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: update,
+        legacyField: "blockers",
+        segmentField: "blockersSegments",
+        hospitalId,
+        preferredMentions,
+      }),
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: update,
+        legacyField: "opportunities",
+        segmentField: "opportunitiesSegments",
+        hospitalId,
+        preferredMentions,
+      }),
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: update,
+        legacyField: "nextStep",
+        segmentField: "nextStepSegments",
+        hospitalId,
+        preferredMentions,
+      }),
+    );
+    update.contactReferenceWarnings = mergeStoredReferenceWarnings(update.contactReferenceWarnings, warnings);
+  }
+
+  for (const task of targetStore.tasks) {
+    const project = projectById.get(task.projectId);
+    const hospitalId = asString(project?.hospitalId);
+    const sourceUpdate = asString(task.updateId) ? updatesById.get(asString(task.updateId)) : null;
+    const preferredMentions = sourceUpdate
+      ? sourceUpdate.contactEntries.map((entry) => ({
+          contactId: entry.contactId,
+          matchText: entry.name,
+        }))
+      : [];
+    const warnings = [];
+    warnings.push(
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: task,
+        legacyField: "title",
+        segmentField: "titleSegments",
+        hospitalId,
+        preferredMentions,
+      }),
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: task,
+        legacyField: "description",
+        segmentField: "descriptionSegments",
+        hospitalId,
+        preferredMentions,
+      }),
+    );
+    const derivedRelatedContactIds = normalizeStringIdArray([
+      ...task.relatedContactIds,
+      ...extractContactIdsFromSegments(task.titleSegments),
+      ...extractContactIdsFromSegments(task.descriptionSegments),
+    ]);
+    task.relatedContactIds = derivedRelatedContactIds;
+    task.contactReferenceWarnings = mergeStoredReferenceWarnings(task.contactReferenceWarnings, warnings);
+  }
+
+  for (const project of targetStore.projects) {
+    const projectUpdates = updatesByProjectId.get(project.id) || [];
+    const projectTasks = tasksByProjectId.get(project.id) || [];
+    const latestUpdate =
+      (project.latestUpdateId && updatesById.get(project.latestUpdateId)) || projectUpdates[0] || null;
+    const nextActionContactIds = normalizeStringIdArray(
+      projectTasks.flatMap((task) => normalizeStringIdArray(task.relatedContactIds)),
+    );
+    const preferredSummaryMentions = latestUpdate
+      ? latestUpdate.contactEntries.map((entry) => ({
+          contactId: entry.contactId,
+          matchText: entry.name,
+        }))
+      : [];
+    const warnings = [];
+    warnings.push(
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: project,
+        legacyField: "latestSummary",
+        segmentField: "latestSummarySegments",
+        hospitalId: project.hospitalId,
+        preferredMentions: preferredSummaryMentions,
+      }),
+      ...ensureStoredTextFieldReferences({
+        targetStore,
+        entity: project,
+        legacyField: "nextAction",
+        segmentField: "nextActionSegments",
+        hospitalId: project.hospitalId,
+        preferredMentions: nextActionContactIds.map((contactId) => ({
+          contactId,
+          matchText: getContactNameFromStore(targetStore, contactId),
+        })),
+      }),
+    );
+    project.contactReferenceWarnings = mergeStoredReferenceWarnings(project.contactReferenceWarnings, warnings);
+  }
+}
+
+function ensureStoredTextFieldReferences({
+  targetStore,
+  entity,
+  legacyField,
+  segmentField,
+  hospitalId,
+  preferredMentions = [],
+}) {
+  const existingSegments = Array.isArray(entity?.[segmentField])
+    ? normalizeStoredTextSegments(entity[segmentField], entity?.[legacyField])
+    : null;
+  const text = asText(entity?.[legacyField]) || renderStoredTextSegments(existingSegments, entity?.[legacyField]);
+  const normalizedSegments = normalizeStoredTextSegments(existingSegments, text);
+  const hasContactReferences = normalizedSegments.some(
+    (segment) => segment.type === "contact" && asString(segment.contactId),
+  );
+  if (!text) {
+    entity[segmentField] = normalizedSegments;
+    return [];
+  }
+  if (hasContactReferences) {
+    entity[segmentField] = normalizedSegments;
+    return [];
+  }
+
+  const { matches, unresolvedNames } = buildMigrationMentionCandidates({
+    targetStore,
+    hospitalId,
+    preferredMentions,
+  });
+  const built = buildTextSegmentsFromMentions({
+    text,
+    matches,
+    unresolvedNames,
+  });
+  entity[segmentField] = built.segments;
+  return built.warnings.map((warning) => ({
+    field: legacyField,
+    name: warning.name,
+    reason: warning.reason,
+  }));
+}
+
+function buildMigrationMentionCandidates({ targetStore, hospitalId, preferredMentions = [] }) {
+  const hospitalContacts = asArray(targetStore?.contacts).filter((contact) => contact.hospitalId === hospitalId);
+  const preferredByText = new Map();
+  for (const mention of preferredMentions) {
+    const contactId = clipText(asString(mention?.contactId), 80);
+    const matchText = clipText(asString(mention?.matchText), 120);
+    if (!contactId || !matchText) {
+      continue;
+    }
+    const contact = hospitalContacts.find((item) => item.id === contactId);
+    if (!contact) {
+      continue;
+    }
+    const key = matchText.toLowerCase();
+    if (!preferredByText.has(key)) {
+      preferredByText.set(key, { matchText, contactIds: new Set(), fallbackText: matchText });
+    }
+    preferredByText.get(key).contactIds.add(contact.id);
+  }
+
+  const hospitalByName = new Map();
+  for (const contact of hospitalContacts) {
+    const name = clipText(asString(contact.name), 120);
+    if (!name) {
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (!hospitalByName.has(key)) {
+      hospitalByName.set(key, { matchText: name, contactIds: new Set() });
+    }
+    hospitalByName.get(key).contactIds.add(contact.id);
+  }
+
+  const matches = [];
+  const unresolvedNames = [];
+
+  for (const item of preferredByText.values()) {
+    const contactIds = [...item.contactIds];
+    if (contactIds.length === 1) {
+      matches.push({
+        contactId: contactIds[0],
+        matchText: item.matchText,
+        fallbackText: item.fallbackText || item.matchText,
+      });
+      continue;
+    }
+    unresolvedNames.push(item.matchText);
+  }
+
+  for (const [key, item] of hospitalByName.entries()) {
+    if (preferredByText.has(key)) {
+      continue;
+    }
+    const contactIds = [...item.contactIds];
+    if (contactIds.length === 1) {
+      matches.push({
+        contactId: contactIds[0],
+        matchText: item.matchText,
+        fallbackText: item.matchText,
+      });
+      continue;
+    }
+    unresolvedNames.push(item.matchText);
+  }
+
+  return {
+    matches,
+    unresolvedNames: uniqueStrings(unresolvedNames),
+  };
+}
+
+function buildTextSegmentsFromMentions({ text, matches = [], unresolvedNames = [] }) {
+  const sourceText = asText(text);
+  if (!sourceText) {
+    return { segments: [], warnings: [] };
+  }
+
+  const uniqueMatches = [];
+  const seenMatches = new Set();
+  for (const item of asArray(matches)) {
+    const contactId = clipText(asString(item?.contactId), 80);
+    const matchText = clipText(asString(item?.matchText), 120);
+    const fallbackText = clipText(asText(item?.fallbackText) || matchText, 120);
+    if (!contactId || !matchText) {
+      continue;
+    }
+    const key = `${contactId}::${matchText.toLowerCase()}`;
+    if (seenMatches.has(key)) {
+      continue;
+    }
+    seenMatches.add(key);
+    uniqueMatches.push({
+      contactId,
+      matchText,
+      fallbackText,
+    });
+  }
+
+  const occurrences = [];
+  for (const match of uniqueMatches) {
+    let searchFrom = 0;
+    while (searchFrom < sourceText.length) {
+      const foundAt = sourceText.indexOf(match.matchText, searchFrom);
+      if (foundAt < 0) {
+        break;
+      }
+      occurrences.push({
+        start: foundAt,
+        end: foundAt + match.matchText.length,
+        match,
+      });
+      searchFrom = foundAt + match.matchText.length;
+    }
+  }
+
+  occurrences.sort((left, right) => {
+    if (left.start !== right.start) {
+      return left.start - right.start;
+    }
+    return right.match.matchText.length - left.match.matchText.length;
+  });
+
+  const segments = [];
+  let cursor = 0;
+  for (const occurrence of occurrences) {
+    if (occurrence.start < cursor) {
+      continue;
+    }
+    if (occurrence.start > cursor) {
+      segments.push({
+        type: "text",
+        text: sourceText.slice(cursor, occurrence.start),
+      });
+    }
+    segments.push({
+      type: "contact",
+      contactId: occurrence.match.contactId,
+      fallbackText: occurrence.match.fallbackText,
+    });
+    cursor = occurrence.end;
+  }
+
+  if (cursor < sourceText.length) {
+    segments.push({
+      type: "text",
+      text: sourceText.slice(cursor),
+    });
+  }
+
+  const warnings = [];
+  const seenWarnings = new Set();
+  for (const unresolvedName of uniqueStrings(unresolvedNames)) {
+    if (!unresolvedName || !sourceText.includes(unresolvedName)) {
+      continue;
+    }
+    const key = unresolvedName.toLowerCase();
+    if (seenWarnings.has(key)) {
+      continue;
+    }
+    seenWarnings.add(key);
+    warnings.push({
+      name: unresolvedName,
+      reason: "ambiguous-name",
+    });
+  }
+
+  return {
+    segments: coalesceStoredTextSegments(segments.length ? segments : [{ type: "text", text: sourceText }]),
+    warnings,
+  };
+}
+
+function mergeStoredReferenceWarnings(existingWarnings, nextWarnings) {
+  return normalizeStoredReferenceWarnings([...(existingWarnings || []), ...(nextWarnings || [])]);
+}
+
+function extractContactIdsFromSegments(rawSegments) {
+  return normalizeStringIdArray(
+    normalizeStoredTextSegments(rawSegments).map((segment) =>
+      segment.type === "contact" ? segment.contactId : "",
+    ),
+  );
+}
+
+function getContactNameFromStore(targetStore, contactId) {
+  const normalizedContactId = clipText(asString(contactId), 80);
+  if (!normalizedContactId) {
+    return "";
+  }
+  return (
+    asArray(targetStore?.contacts).find((item) => item.id === normalizedContactId)?.name || ""
+  );
 }
 
 function normalizeUsers(users, regions) {
   const usedAccounts = new Set();
   const normalizedUsers = users.map((user, index) => normalizeUserRecord(user, index, usedAccounts));
-  return ensureBackupAdminUser(normalizedUsers, usedAccounts, regions);
+  const normalizedWithBackup = ensureBackupAdminUser(normalizedUsers, usedAccounts, regions);
+  applyNormalizedSupervisorAssignments(normalizedWithBackup);
+  return normalizedWithBackup;
 }
 
 function normalizeUserRecord(user, index, usedAccounts) {
@@ -2810,6 +4022,7 @@ function normalizeUserRecord(user, index, usedAccounts) {
     name: baseName,
     role: normalizedRole,
     regionId: asString(user?.regionId),
+    supervisorUserId: clipText(asString(user?.supervisorUserId), 80),
     account,
     passwordSalt,
     passwordHash,
@@ -2830,6 +4043,7 @@ function ensureBackupAdminUser(users, usedAccounts, regions) {
       name: BACKUP_ADMIN_NAME || "Backup Admin",
       role: "manager",
       regionId: asString(regions[0]?.id) || asString(users[0]?.regionId),
+      supervisorUserId: "",
       account: toUniqueAccount(BACKUP_ADMIN_ACCOUNT, usedAccounts),
       passwordSalt,
       passwordHash: hashPassword(DEFAULT_INITIAL_PASSWORD, passwordSalt),
@@ -2848,7 +4062,91 @@ function ensureBackupAdminUser(users, usedAccounts, regions) {
   if (!backupAdminUser.regionId) {
     backupAdminUser.regionId = asString(regions[0]?.id) || asString(users[0]?.regionId);
   }
+  backupAdminUser.supervisorUserId = "";
   return users;
+}
+
+function applyNormalizedSupervisorAssignments(users) {
+  const safeUsers = Array.isArray(users) ? users : [];
+  for (const user of safeUsers) {
+    user.supervisorUserId = resolveSupervisorAssignmentForUser({
+      user,
+      users: safeUsers,
+      regionId: user.regionId,
+      requestedSupervisorUserId: user.supervisorUserId,
+      allowImplicitRegionAssignment: true,
+    });
+  }
+}
+
+function resolveSupervisorAssignmentForUser({
+  user,
+  users,
+  regionId,
+  requestedSupervisorUserId,
+  allowImplicitRegionAssignment,
+}) {
+  const normalizedRole = normalizeUserRole(asString(user?.role));
+  const normalizedRegionId = asString(regionId || user?.regionId);
+  const normalizedRequestedSupervisorUserId =
+    requestedSupervisorUserId === undefined ? asString(user?.supervisorUserId) : asString(requestedSupervisorUserId);
+
+  if (normalizedRole !== "specialist") {
+    if (normalizedRequestedSupervisorUserId) {
+      throw new Error("Only specialists can be assigned to a supervisor.");
+    }
+    return "";
+  }
+
+  if (!normalizedRequestedSupervisorUserId) {
+    if (!allowImplicitRegionAssignment) {
+      return "";
+    }
+    return resolveImplicitSupervisorUserId({
+      users,
+      regionId: normalizedRegionId,
+      excludeUserId: asString(user?.id),
+    });
+  }
+
+  const supervisor = asArray(users).find((item) => asString(item?.id) === normalizedRequestedSupervisorUserId);
+  if (!supervisor) {
+    throw new Error("supervisorUserId is invalid.");
+  }
+  if (normalizeUserRole(supervisor.role) !== "supervisor") {
+    throw new Error("supervisorUserId must belong to a supervisor.");
+  }
+  if (asString(supervisor.regionId) !== normalizedRegionId) {
+    throw new Error("supervisorUserId must be in the same region as the specialist.");
+  }
+  return supervisor.id;
+}
+
+function resolveImplicitSupervisorUserId({ users, regionId, excludeUserId = "" }) {
+  const supervisors = asArray(users).filter(
+    (item) =>
+      normalizeUserRole(item?.role) === "supervisor" &&
+      asString(item?.regionId) === asString(regionId) &&
+      asString(item?.id) !== asString(excludeUserId),
+  );
+  return supervisors.length === 1 ? asString(supervisors[0]?.id) : "";
+}
+
+function ensureSupervisorRegionChangeDoesNotBreakAssignments({ user, users, regionId }) {
+  if (normalizeUserRole(asString(user?.role)) !== "supervisor") {
+    return;
+  }
+
+  const normalizedRegionId = asString(regionId || user?.regionId);
+  const mismatchedSpecialists = asArray(users).filter(
+    (item) =>
+      normalizeUserRole(item?.role) === "specialist" &&
+      asString(item?.supervisorUserId) === asString(user?.id) &&
+      asString(item?.regionId) !== normalizedRegionId,
+  );
+  if (mismatchedSpecialists.length) {
+    throw new Error("Cannot move supervisor to a different region while assigned specialists remain in the old region.");
+  }
 }
 
 function normalizeAuthSessions(authSessions, userIds) {
@@ -2903,6 +4201,10 @@ function getDepartmentById(id) {
   return store.departments.find((item) => item.id === id);
 }
 
+function getContactById(id) {
+  return store.contacts.find((item) => item.id === id);
+}
+
 function getIssueTagById(id) {
   return store.issueTags.find((item) => item.id === id);
 }
@@ -2920,22 +4222,41 @@ function getRemarkById(id) {
 }
 
 function nowIso() {
-  return new Date().toISOString();
+  return businessClock.nowIso();
 }
 
 function todayDateOnly() {
-  return nowIso().slice(0, 10);
+  return businessClock.todayDateOnly();
+}
+
+function buildTaskDueAtFromDateOnly(dateOnly) {
+  const normalized = normalizeDateOnly(dateOnly);
+  return normalized ? `${normalized}T09:00:00.000Z` : null;
+}
+
+function ensureTaskDueDateHistory(task) {
+  if (!Array.isArray(task.dueDateHistory)) {
+    task.dueDateHistory = [];
+  }
+  return task.dueDateHistory;
+}
+
+function ensureTaskRecords(task) {
+  if (!Array.isArray(task.records)) {
+    task.records = [];
+  }
+  return task.records;
 }
 
 function calculateStalledDays(isoString) {
   if (!isoString) {
     return 999;
   }
-  return Math.max(0, Math.floor((Date.now() - new Date(isoString).getTime()) / 86400000));
+  return Math.max(0, Math.floor((businessClock.nowMs() - new Date(isoString).getTime()) / 86400000));
 }
 
 function isDatePast(isoString) {
-  return Boolean(isoString) && new Date(isoString).getTime() < Date.now();
+  return Boolean(isoString) && new Date(isoString).getTime() < businessClock.nowMs();
 }
 
 function compareIsoDesc(left, right) {
@@ -2963,63 +4284,109 @@ function normalizeBackupDateInput(value) {
   return normalized && /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
 }
 
-function normalizeBackupFrequency(value) {
-  const normalized = asString(value).toLowerCase();
-  return normalized === "weekly" ? "weekly" : normalized === "daily" ? "daily" : "";
+function normalizeBackupPolicy(policy) {
+  return normalizeBackupPolicyWithDefaults(policy, {
+    maxBackups: MAX_BACKUP_COUNT,
+    dailyHour: DAILY_BACKUP_HOUR,
+    dailyMinute: DAILY_BACKUP_MINUTE,
+    defaultWeekday: DEFAULT_BACKUP_WEEKDAY,
+  });
 }
 
-function normalizeBackupPolicy(policy) {
-  const schedule = policy && typeof policy === "object" ? policy.schedule : null;
-  const normalizedSchedule = {
-    frequency: normalizeBackupFrequency(schedule?.frequency) || "daily",
-    hour: normalizeHourValue(schedule?.hour, DAILY_BACKUP_HOUR),
-    minute: normalizeMinuteValue(schedule?.minute, DAILY_BACKUP_MINUTE),
-    weekday: normalizeWeekdayValue(schedule?.weekday, DEFAULT_BACKUP_WEEKDAY),
+function createBusinessClock({ simulationMode: enabled, clockFile }) {
+  const resolvedClockFile = enabled ? path.resolve(asString(clockFile).trim()) : "";
+  const state = {
+    lastEpochMs: null,
   };
+
+  const resolveSnapshot = () => {
+    if (!enabled) {
+      const current = new Date();
+      return {
+        mode: "system",
+        date: current,
+        currentDate: current.toISOString().slice(0, 10),
+      };
+    }
+
+    if (!resolvedClockFile) {
+      throw new Error("SIMULATION_CLOCK_FILE is required when SIMULATION_MODE=true.");
+    }
+    if (!existsSync(resolvedClockFile)) {
+      throw new Error(`Simulation clock file does not exist: ${resolvedClockFile}`);
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(readFileSync(resolvedClockFile, "utf8"));
+    } catch (error) {
+      throw new Error(
+        `Failed to read simulation clock file ${resolvedClockFile}: ${error instanceof Error ? error.message : "Unknown error."}`,
+      );
+    }
+
+    const currentDate = normalizeDateOnly(payload?.currentDate);
+    const currentDateTime = asString(payload?.currentDateTime).trim();
+    if (!currentDate) {
+      throw new Error(`Simulation clock file ${resolvedClockFile} is missing a valid currentDate.`);
+    }
+    if (!currentDateTime) {
+      throw new Error(`Simulation clock file ${resolvedClockFile} is missing currentDateTime.`);
+    }
+
+    const date = new Date(currentDateTime);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error(`Simulation clock file ${resolvedClockFile} has an invalid currentDateTime.`);
+    }
+    if (date.toISOString().slice(0, 10) !== currentDate) {
+      throw new Error(
+        `Simulation clock file ${resolvedClockFile} must keep currentDate and currentDateTime on the same day.`,
+      );
+    }
+    if (state.lastEpochMs !== null && date.getTime() < state.lastEpochMs) {
+      throw new Error(
+        `Simulation clock file ${resolvedClockFile} moved backwards from ${new Date(state.lastEpochMs).toISOString()} to ${date.toISOString()}.`,
+      );
+    }
+
+    state.lastEpochMs = date.getTime();
+    return {
+      mode: "simulation",
+      date,
+      currentDate,
+    };
+  };
+
   return {
-    maxBackups: MAX_BACKUP_COUNT,
-    schedule: normalizedSchedule,
+    assertReady() {
+      resolveSnapshot();
+    },
+    nowIso() {
+      return resolveSnapshot().date.toISOString();
+    },
+    nowMs() {
+      return resolveSnapshot().date.getTime();
+    },
+    todayDateOnly() {
+      return resolveSnapshot().currentDate;
+    },
+    describe() {
+      const snapshot = resolveSnapshot();
+      return {
+        enabled,
+        mode: snapshot.mode,
+        clockFile: enabled ? resolvedClockFile : null,
+        currentDate: snapshot.currentDate,
+        currentDateTime: snapshot.date.toISOString(),
+      };
+    },
   };
 }
 
 function normalizeBackupScheduleInput(input) {
-  const frequency = normalizeBackupFrequency(input?.frequency);
-  if (!frequency) {
-    throw new Error("backup frequency is invalid.");
-  }
-  const hour = normalizeHourValue(input?.hour, NaN);
-  if (!Number.isInteger(hour)) {
-    throw new Error("backup hour is invalid.");
-  }
-  const minute = normalizeMinuteValue(input?.minute, NaN);
-  if (!Number.isInteger(minute)) {
-    throw new Error("backup minute is invalid.");
-  }
-  const weekday = frequency === "weekly" ? normalizeWeekdayValue(input?.weekday, NaN) : DEFAULT_BACKUP_WEEKDAY;
-  if (frequency === "weekly" && !Number.isInteger(weekday)) {
-    throw new Error("backup weekday is invalid.");
-  }
-  return {
-    frequency,
-    hour,
-    minute,
-    weekday,
-  };
-}
-
-function normalizeHourValue(value, fallbackValue) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 23 ? parsed : fallbackValue;
-}
-
-function normalizeMinuteValue(value, fallbackValue) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 59 ? parsed : fallbackValue;
-}
-
-function normalizeWeekdayValue(value, fallbackValue) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : fallbackValue;
+  return normalizeBackupScheduleInputWithDefaults(input, {
+    defaultWeekday: DEFAULT_BACKUP_WEEKDAY,
+  });
 }
 
 function getBackupPolicy() {
@@ -3046,8 +4413,17 @@ function asString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function asText(value) {
+  return typeof value === "string" ? value : "";
+}
+
 function normalizeBoolean(value) {
   return value === true || value === "true" || value === 1 || value === "1";
+}
+
+function isTruthyEnvValue(value) {
+  const normalized = asString(value).toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 function asArray(value) {
@@ -3137,16 +4513,28 @@ function uniqueStrings(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
-function ensureUniqueByName(items) {
+function dedupeContactMentions(items) {
   const seen = new Set();
-  return items.filter((item) => {
-    const key = asString(item?.name).toLowerCase();
-    if (!key || seen.has(key)) {
+  return asArray(items).filter((item) => {
+    const reviewContactId = clipText(asString(item?.reviewContactId), 80);
+    const nameKey = asString(item?.name).toLowerCase();
+    const roleKey = asString(item?.role).toLowerCase();
+    const matchedContactId = clipText(asString(item?.matchedContactId), 80);
+    const key = reviewContactId || `${nameKey}::${roleKey}::${matchedContactId}`;
+    if (!nameKey || !key || seen.has(key)) {
       return false;
     }
     seen.add(key);
     return true;
   });
+}
+
+function normalizeReviewedContactResolutionStatus(rawStatus) {
+  const normalized = asString(rawStatus);
+  if (normalized === "matched" || normalized === "new" || normalized === "conflict") {
+    return normalized;
+  }
+  return "new";
 }
 
 function mapCountEntries(countMap) {

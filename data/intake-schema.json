@@ -2,7 +2,6 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "department",
     "contacts",
     "feedback_summary",
     "blockers",
@@ -14,7 +13,6 @@
     "next_step"
   ],
   "properties": {
-    "department": { "type": "string" },
     "contacts": {
       "type": "array",
       "items": {

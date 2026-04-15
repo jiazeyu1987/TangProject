@@ -1,0 +1,43 @@
+{
+  "name": "default-month",
+  "startDate": "2026-04-10",
+  "days": 30,
+  "basePort": 4300,
+  "roster": [
+    { "role": "manager", "count": 1 },
+    { "role": "supervisor", "count": 1 },
+    { "role": "specialist", "count": 2 }
+  ],
+  "turnBudget": {
+    "maxActionsPerTurn": 20,
+    "roundsPerDay": 2
+  },
+  "scorecards": {
+    "manager": {
+      "attentionProjectsImprovement": 0.4,
+      "overdueTasksImprovement": 0.3,
+      "supervisorFollowupRate2d": 0.2,
+      "globalInspectionCoverage": 0.1
+    },
+    "supervisor": {
+      "regionStageProgression": 0.3,
+      "regionOverdueImprovement": 0.3,
+      "specialistReplyRate2d": 0.25,
+      "highRiskReduction": 0.15
+    },
+    "specialist": {
+      "ownTaskCompletionRate": 0.5,
+      "remarkReplyRate1d": 0.25,
+      "intakeAndTaskProgress": 0.25
+    }
+  },
+  "model": {
+    "provider": "codex-session",
+    "name": "gpt-5.3-codex",
+    "temperature": 0
+  },
+  "artifactPolicy": {
+    "screenshotsPerTurn": 1,
+    "recordTrace": true
+  }
+}

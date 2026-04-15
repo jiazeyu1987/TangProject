@@ -10,7 +10,7 @@ if not exist "%PS_SCRIPT%" (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" -PromptForPassword %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" -DeployMode code-sync -PromptForPassword %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (

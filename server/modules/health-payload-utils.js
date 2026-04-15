@@ -1,0 +1,45 @@
+export function buildHealthPayloadView({
+  health,
+  responsesModel,
+  responsesBaseUrl,
+  responsesMaxConcurrentRequests,
+  activeRequests,
+  queuedRequests,
+  storePath,
+  projectCount,
+  taskCount,
+  simulation,
+  backupPath,
+  backupMaxCount,
+  backupSchedule,
+  backupSchedulerState,
+}) {
+  return {
+    ok: health.configured,
+    configured: health.configured,
+    authStatus: health.message,
+    extractionMode: health.configured ? "responses-api" : "unconfigured",
+    model: responsesModel,
+    baseUrl: responsesBaseUrl,
+    responsesConcurrency: {
+      maxConcurrentRequests: responsesMaxConcurrentRequests,
+      activeRequests,
+      queuedRequests,
+    },
+    dataStore: {
+      path: storePath,
+      projectCount,
+      taskCount,
+    },
+    simulation,
+    backup: {
+      path: backupPath,
+      maxCount: backupMaxCount,
+      frequency: backupSchedule.frequency,
+      weekday: backupSchedule.frequency === "weekly" ? backupSchedule.weekday : null,
+      scheduledAt: `${String(backupSchedule.hour).padStart(2, "0")}:${String(backupSchedule.minute).padStart(2, "0")}`,
+      lastRunAt: backupSchedulerState.lastRunAt || null,
+      nextRunAt: backupSchedulerState.nextRunAt || null,
+    },
+  };
+}

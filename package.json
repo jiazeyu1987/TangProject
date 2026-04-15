@@ -6,13 +6,19 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check public/app.js"
+    "check": "npm run check:app && npm run check:sim",
+    "check:app": "node --check server.js && node --check public/app.js",
+    "check:sim": "node --check simulation/cli.js && node --check simulation/run-simulation.js && node --check simulation/scenario-loader.js && node --check simulation/types.js && node --check simulation/runtime/helpers.js && node --check simulation/runtime/environment.js && node --check simulation/runtime/browser-driver.js && node --check simulation/runtime/model-client.js && node --check simulation/runtime/codex-session-client.js && node --check simulation/runtime/role-agent.js && node --check simulation/runtime/scoring.js && node --check simulation/runtime/reporter.js",
+    "sim:month": "node simulation/cli.js",
+    "sim:month:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-simulation-test-server.ps1",
+    "e2e:business": "node scripts/test-business-logic-e2e.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "dotenv": "^17.4.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "playwright": "^1.59.1"
   }
 }
