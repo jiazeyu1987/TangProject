@@ -5,3 +5,10 @@ __pycache__/
 *.pyc
 npm-debug.log*
 output/simulations/
+.codex-*
+.playwright-cli/
+data/backups/
+output/
+doc/tasks/*T*/
+*.err.log
+*.out.log
