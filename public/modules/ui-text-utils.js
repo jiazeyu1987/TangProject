@@ -321,7 +321,16 @@
   }
 
   function normalizeDisplayGarbles(value) {
-    let normalized = value.replace(/\uFFFD+/g, "待补录");
+    const rawText = String(value || "");
+    const hasPrivateUse = /[\uE000-\uF8FF]/.test(rawText);
+    const cjkCount = (rawText.match(/[\u3400-\u9FFF]/g) || []).length;
+    const hasReplacement = /\uFFFD/.test(rawText) || /\?{2,}/.test(rawText);
+
+    if (hasPrivateUse || (hasReplacement && cjkCount === 0)) {
+      return "内容待补录";
+    }
+
+    let normalized = rawText.replace(/\uFFFD+/g, "待补录");
     normalized = normalized.replace(/\?{2,}/g, "待补录");
     normalized = normalized.replace(/待补录(?:\s*[\/|、,，;；]\s*待补录)+/g, "待补录");
     normalized = normalized.replace(/待补录(?:\s+待补录)+/g, "待补录");

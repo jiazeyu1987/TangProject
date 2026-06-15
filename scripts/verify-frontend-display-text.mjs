@@ -8,6 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 
 const SUSPICIOUS_RULES = [
+  { id: "replacement_char_mojibake", regex: /\uFFFD/ },
+  { id: "private_use_mojibake", regex: /[\uE000-\uF8FF]/ },
+  { id: "common_gbk_mojibake", regex: /(锟斤拷|鏈|鎴|绯|濡|灏|浜|杩|瑙|鐢|勫|彇|绋|鍖|缁|寮|爣|杈|€)/ },
+  { id: "leaked_html_fragment", regex: /["']?\/(?:button|li|p|h3)>/i },
   { id: "responses_api", regex: /Responses API/i },
   { id: "ai_note", regex: /\bAI\s*录入纪要/i },
   { id: "auth_incorrect", regex: /account or password is incorrect/i },
@@ -25,6 +29,21 @@ const SUSPICIOUS_RULES = [
   { id: "tester", regex: /\bTester\b/i },
   { id: "e2e", regex: /\bE2E\b/i },
   { id: "garbled_question_marks", regex: /\?{2,}/ },
+];
+
+const NORMALIZATION_SAMPLES = [
+  {
+    id: "replacement_chars_with_chinese_context",
+    input: "华东 \uFFFD\uFFFD 上海 \uFFFD\uFFFD 三甲",
+  },
+  {
+    id: "private_use_mojibake",
+    input: "鏈\uE101\uE0BC缁撴瀯鍖栫粨鏋滃皢鍦ㄧ敓鎴愬悗灞曠ず浜庢\uE11D銆?/p>",
+  },
+  {
+    id: "replacement_only_fragment",
+    input: "\uFFFD\uFFFDJ\u030C\uFFFD\u01BC\uFFFD",
+  },
 ];
 
 function fail(message) {
@@ -110,6 +129,46 @@ function collectSuspiciousMatches(text) {
     }
   }
   return matches;
+}
+
+async function captureNormalizationAudit(page, outputDir) {
+  const result = await page.evaluate((samples) => {
+    const utils = window.UiTextUtils;
+    if (!utils || typeof utils.normalizeDisplayText !== "function") {
+      return {
+        ok: false,
+        reason: "UiTextUtils.normalizeDisplayText is unavailable.",
+        samples: [],
+      };
+    }
+
+    return {
+      ok: true,
+      reason: "",
+      samples: samples.map((sample) => ({
+        id: sample.id,
+        input: sample.input,
+        output: utils.normalizeDisplayText(sample.input),
+      })),
+    };
+  }, NORMALIZATION_SAMPLES);
+
+  const samples = Array.isArray(result.samples) ? result.samples : [];
+  const failures = samples
+    .map((sample) => ({
+      ...sample,
+      matches: collectSuspiciousMatches(sample.output),
+    }))
+    .filter((sample) => sample.matches.length > 0);
+  const audit = {
+    ok: Boolean(result.ok) && failures.length === 0,
+    reason: result.reason || "",
+    samples,
+    failures,
+  };
+
+  writeJson(path.join(outputDir, "normalization-audit.json"), audit);
+  return audit;
 }
 
 async function login(page, { baseUrl, account, password }) {
@@ -225,6 +284,7 @@ async function main() {
   try {
     const page = await context.newPage();
     const authAudit = await login(page, options);
+    const normalizationAudit = await captureNormalizationAudit(page, options.outputDir);
 
     const entrySection = await captureSection(
       page,
@@ -317,13 +377,14 @@ async function main() {
     writeJson(path.join(options.outputDir, "dashboard-audit.json"), dashboardAudit);
 
     const summary = {
-      ok: entryAudit.ok && dashboardAudit.ok,
+      ok: entryAudit.ok && dashboardAudit.ok && normalizationAudit.ok,
       baseUrl: options.baseUrl,
       outputDir: options.outputDir,
       health,
       audits: {
         entry: path.join(options.outputDir, "entry-audit.json"),
         dashboard: path.join(options.outputDir, "dashboard-audit.json"),
+        normalization: path.join(options.outputDir, "normalization-audit.json"),
       },
       screenshots: {
         entry: entrySection.screenshotPath,
